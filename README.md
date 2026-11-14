@@ -1,6 +1,52 @@
 # ALIBI — Commission Authority Without Wallet Access
 
-**Experimental NWC Commission Payments implementation | Vendor-controlled | Lightning-native**
+**An agent can be trusted with a commission. It cannot be trusted with a wallet.**
+
+A marketplace gets a narrow, revocable permission: request a commission-bound
+sale to one approved payee, within one policy. It never receives
+`pay_invoice`, `settle_hold_invoice`, or any general spending method. The
+vendor's wallet enforces the policy — not the marketplace's UI, not the
+marketplace's honesty.
+
+*Experimental reference implementation of the NWC Commission Payments draft
+([nwc#8](https://github.com/nostr-wallet-connect/nwc/issues/8)) — the draft
+is not an adopted standard. Regtest only. Not mainnet. Not trustless.*
+
+---
+
+## Evidence table
+
+Claim discipline: every row below is labeled by what actually happened, not
+what the code intends. Re-run instructions in each row's command.
+
+| Claim | Status | Command / evidence |
+|---|---|---|
+| 20% commission blocked by wallet policy | **VERIFIED** | `node engine/bin/adversarial-test.js` → 8/8 pass |
+| Unauthorized payee blocked | **VERIFIED** | same run |
+| Budget exhaustion blocked | **VERIFIED** | same run |
+| Duplicate payment-hash blocked | **VERIFIED** | same run |
+| Integer money math (no floats) | **VERIFIED** | `CommissionPolicy` uses BigInt comparisons |
+| No credentials in reachable git history | **VERIFIED** | `git log --all -- data/` → clean; `.gitignore` denies `*.macaroon *.seed *.key *.cert` |
+| Full Alice→Bob→Carol transaction | **SIMULATED** | `node engine/bin/commission-flow-simulator.js` — in-memory wallet state, not LND |
+| Real hold invoices + outgoing payment | **IMPLEMENTED, NOT VERIFIED** | LND REST calls in `commission-service.js`; requires `docker compose up` |
+| Independent node-backed verifier | **IMPLEMENTED, NOT VERIFIED** | `node engine/bin/verifier.js` — fails closed (exit 2) without credentials |
+| NWC `make_commission_invoice` handler | **IMPLEMENTED, NOT VERIFIED** | `engine/bin/nwc-server.js` — not yet exercised over a relay |
+| Durable budget (SQLite, atomic) | **MISSING** | in-memory Maps; restart loses reservations |
+| Restart / lost-response recovery | **MISSING** | highest-risk untested path |
+| Marketplace cancellation scenario | **MISSING** | required failure demo |
+| Transaction Room UI on live state | **MISSING** | static HTML only |
+
+**Honest headline:** the policy engine is proven; the Lightning transaction
+is not yet executed. Until `docker compose` runs one real 100,000-sat sale
+with a 5,000-sat commission, this entry does not claim a working MVP.
+
+---
+
+## The economics (corrected)
+
+The buyer pays **one invoice of 100,000 sats**. Not 105,000.
+The commission (5,000 sats at 5%) is paid by the vendor out of the received
+amount. Vendor net before routing fees: **95,000 sats**.
 
 ---
 

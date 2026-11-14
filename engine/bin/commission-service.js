@@ -115,7 +115,9 @@ class CommissionPolicy {
     }
     
     // Check budget - use database if available, otherwise in-memory
-    const remainingBudget = this.budgetMsat - Number(this.spentMsat);
+    const reservedMsat = Array.from(this.activeRequests.values())
+      .reduce((sum, r) => sum + BigInt(r.amountMsat), 0n);
+    const remainingBudget = this.budgetMsat - Number(this.spentMsat) - Number(reservedMsat);
     if (requestedAmountMsat > remainingBudget) {
       errors.push({ 
         code: 'BUDGET_EXCEEDED', 
