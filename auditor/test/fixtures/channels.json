@@ -1,0 +1,44 @@
+{
+  "channels": [
+    {
+      "active": true,
+      "channel_point": "aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111:0",
+      "chan_id": "100000000000001",
+      "capacity": "2000000",
+      "local_balance": "1200000",
+      "remote_pubkey": "02bobpubkey0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "active": true,
+      "channel_point": "bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222:1",
+      "chan_id": "100000000000002",
+      "capacity": "1500000",
+      "local_balance": "900000",
+      "remote_pubkey": "02carolpubkey0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "active": false,
+      "channel_point": "cccc3333cccc3333cccc3333cccc3333cccc3333cccc3333cccc3333cccc3333:0",
+      "chan_id": "100000000000003",
+      "capacity": "1000000",
+      "local_balance": "1000000",
+      "remote_pubkey": "02davepubkey0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "active": true,
+      "channel_point": "dddd4444dddd4444dddd4444dddd4444dddd4444dddd4444dddd4444dddd4444:0",
+      "chan_id": "100000000000004",
+      "capacity": "700000",
+      "local_balance": "400000",
+      "remote_pubkey": "02carolpubkey0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "active": true,
+      "channel_point": "eeee5555eeee5555eeee5555eeee5555eeee5555eeee5555eeee5555eeee5555:1",
+      "chan_id": "100000000000005",
+      "capacity": "400000",
+      "local_balance": "200000",
+      "remote_pubkey": "02davepubkey0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
+}

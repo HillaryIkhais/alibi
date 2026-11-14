@@ -1,0 +1,7 @@
+{
+  "channel_backups": [
+    { "chan_point": "aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111:0", "chan_backup": "base64placeholderchan1", "chan_id": "100000000000001" },
+    { "chan_point": "bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222:1", "chan_backup": "base64placeholderchan2", "chan_id": "100000000000002" },
+    { "chan_point": "cccc3333cccc3333cccc3333cccc3333cccc3333cccc3333cccc3333cccc3333:0", "chan_backup": "base64placeholderchan3", "chan_id": "100000000000003" }
+  ]
+}

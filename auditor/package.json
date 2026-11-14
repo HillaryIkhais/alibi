@@ -1,0 +1,11 @@
+{
+  "name": "harbor-auditor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "LND recovery-readiness auditor: compares static channel backups against live channel state.",
+  "scripts": {
+    "audit": "node bin/audit.mjs"
+  },
+  "dependencies": {}
+}

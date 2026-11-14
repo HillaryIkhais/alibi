@@ -1,0 +1,139 @@
+# HARBOR regtest lab: bitcoind + 3 LND nodes (alice, bob, carol)
+# Alice uses a recoverable test wallet (seed persisted in ./data) for restore rehearsal.
+# Bob/Carol use --noseedbackup for simplified peer setup in regtest lab.
+
+services:
+  bitcoind:
+    image: bitcoin/bitcoin:32.1
+    ports:
+      - "18443:18443"
+    environment:
+      BITCOIN_DATA: /data
+    volumes:
+      - bitcoin_data:/data
+    command: >
+      -regtest=1
+      -server=1
+      -rpcuser=bitcoin
+      -rpcpassword=bitcoin
+      -rpcbind=0.0.0.0
+      -rpcallowip=0.0.0.0/0
+      -rpcport=18443
+      -zmqpubrawblock=tcp://0.0.0.0:28334
+      -zmqpubrawtx=tcp://0.0.0.0:28335
+      -txindex=1
+      -fallbackfee=0.00001
+    healthcheck:
+      test: ["CMD-SHELL", "bitcoin-cli -regtest -rpcuser=bitcoin -rpcpassword=bitcoin getblockchaininfo | grep -q blocks"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - harbor
+
+  lnd-alice:
+    image: lightninglabs/lnd:v0.21.6-beta
+    ports:
+      - "10029:10029"
+      - "10039:10039"
+    volumes:
+      - lnd_alice_data:/root/.lnd
+      - ./data:/harbor-data
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    command: >
+      --bitcoin.regtest
+      --bitcoin.node=bitcoind
+      --bitcoind.rpchost=bitcoind
+      --bitcoind.rpcuser=bitcoin
+      --bitcoind.rpcpass=bitcoin
+      --bitcoind.zmqpubrawblock=tcp://bitcoind:28334
+      --bitcoind.zmqpubrawtx=tcp://bitcoind:28335
+      --externalip=lnd-alice
+      --listen=0.0.0.0:9735
+      --rpclisten=0.0.0.0:10029
+      --restlisten=0.0.0.0:10039
+      --noseedbackup
+      --debuglevel=info
+    healthcheck:
+      test: ["CMD-SHELL", "lncli --network=regtest --rpcserver=127.0.0.1:10029 getinfo 2>/dev/null | grep -q synced_to_chain"]
+      interval: 10s
+      timeout: 20s
+      retries: 60
+    networks:
+      - harbor
+
+  lnd-bob:
+    image: lightninglabs/lnd:v0.21.6-beta
+    ports:
+      - "10030:10030"
+      - "10040:10040"
+    volumes:
+      - lnd_bob_data:/root/.lnd
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    command: >
+      --bitcoin.regtest
+      --bitcoin.node=bitcoind
+      --bitcoind.rpchost=bitcoind
+      --bitcoind.rpcuser=bitcoin
+      --bitcoind.rpcpass=bitcoin
+      --bitcoind.zmqpubrawblock=tcp://bitcoind:28334
+      --bitcoind.zmqpubrawtx=tcp://bitcoind:28335
+      --externalip=lnd-bob
+      --listen=0.0.0.0:9735
+      --rpclisten=0.0.0.0:10030
+      --restlisten=127.0.0.1:10040
+      --noseedbackup
+      --debuglevel=info
+    healthcheck:
+      test: ["CMD-SHELL", "lncli --network=regtest --rpcserver=127.0.0.1:10030 getinfo 2>/dev/null | grep -q 'synced_to_chain\": true'"]
+      interval: 10s
+      timeout: 20s
+      retries: 60
+    networks:
+      - harbor
+
+  lnd-carol:
+    image: lightninglabs/lnd:v0.21.6-beta
+    ports:
+      - "10031:10031"
+      - "10041:10041"
+    volumes:
+      - lnd_carol_data:/root/.lnd
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    command: >
+      --bitcoin.regtest
+      --bitcoin.node=bitcoind
+      --bitcoind.rpchost=bitcoind
+      --bitcoind.rpcuser=bitcoin
+      --bitcoind.rpcpass=bitcoin
+      --bitcoind.zmqpubrawblock=tcp://bitcoind:28334
+      --bitcoind.zmqpubrawtx=tcp://bitcoind:28335
+      --externalip=lnd-carol
+      --listen=0.0.0.0:9735
+      --rpclisten=0.0.0.0:10031
+      --restlisten=127.0.0.1:10041
+      --noseedbackup
+      --debuglevel=info
+    healthcheck:
+      test: ["CMD-SHELL", "lncli --network=regtest --rpcserver=127.0.0.1:10031 getinfo 2>/dev/null | grep -q 'synced_to_chain\": true'"]
+      interval: 10s
+      timeout: 20s
+      retries: 60
+    networks:
+      - harbor
+
+volumes:
+  bitcoin_data:
+  lnd_alice_data:
+  lnd_bob_data:
+  lnd_carol_data:
+
+networks:
+  harbor:
+    driver: bridge

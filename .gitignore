@@ -1,0 +1,23 @@
+# Wallet credentials - NEVER commit
+*.macaroon
+*.seed
+*.key
+*.cert
+channel.backup
+channel.backups.b64
+data/*.pass
+data/*.seed
+logs/
+*.log
+
+# Node generated
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Evidence
+evidence/
+
+# Embedded repos
+alibi/fresh/.git
+harbor/.git
