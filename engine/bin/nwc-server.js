@@ -1,263 +1,163 @@
 #!/usr/bin/env node
 /**
- * Alibi NWC Server - Commission Payment Request Handler
- * Implements NWC Commission Payments draft as a reference wallet
- * 
- * This server:
- * 1. Validates NWC connections against allowed methods
- * 2. Handles make_commission_invoice requests
- * 3. Enforces vendor commission policy
- * 4. Returns BOLT11 sale invoices
- * 
- * RESTRICTED: Marketplace connections can ONLY:
- * - get_info
- * - lookup_invoice  
- * - make_commission_invoice
- * 
- * BLOCKED: pay_invoice, settle_hold_invoice, cancel_hold_invoice, etc.
+ * ALIBI NWC SERVER — Commission Payment Request Handler
+ *
+ * Vendor-side NWC endpoint. A marketplace connection may ONLY call:
+ *   get_info, lookup_invoice, make_commission_invoice
+ * Blocked: pay_invoice, settle_hold_invoice, cancel_hold_invoice, create_connection, etc.
+ *
+ * The marketplace never receives the vendor's spending authority.
+ * All policy enforcement happens in CommissionService (wallet-side).
+ *
+ * ENV:
+ *   HARBOR_NWC_PORT       (default 8080)
+ *   HARBOR_LND_REST_URL   Alice's vendor LND REST endpoint
+ *   HARBOR_LND_MACAROON   Alice's read-only macaroon (hex)
+ *   HARBOR_LND_TLS_CERT   path to Alice's tls.cert
+ *   HARBOR_MARKETPLACE_PUBKEY  Bob's identity pubkey (allowed payee)
  */
 
 const http = require('http');
-const https = require('https');
 const crypto = require('crypto');
-const fs = require('fs');
-const url = require('url');
+const { CommissionService } = require('./commission-service.js');
 
-// Environment configuration
-const PORT = process.env.HARBOR_NWC_PORT || 8080;
-const LND_REST_URL = process.env.HARBOR_LND_REST_URL || 'http://127.0.0.1:10039';
-const LND_MACAROON = process.env.HARBOR_LND_MACAROON || '';
-const TLS_CERT = process.env.HARBOR_LND_TLS_CERT || null;
+const PORT = parseInt(process.env.HARBOR_NWC_PORT || '8080', 10);
 
-// Import commission components
-const { CommissionPolicy, NwcCommissionHandler } = require('./nwc-commission-handler.js');
-
-// Commission Policy Configuration
-const COMMISSION_POLICY = {
-  maxPercent: 5,                           // Maximum 5% commission
-  allowedPayee: process.env.HARBOR_MARKETPLACE_PUBKEY || '0225a72a6bee672de3e8dd80fcac4d0827546b761c6dbe552527b88157ac9facd5',
-  budgetMsat: 100000000,                   // 100,000 sats budget
-  maxRoutingFeePercent: 5000               // 0.5% max routing fee
-};
-
-// Allowed NWC methods for this restricted connection
-const ALLOWED_METHODS = new Set([
-  'get_info',
-  'lookup_invoice',
-  'make_commission_invoice'
-]);
-
-// Block list for dangerous methods
+const ALLOWED_METHODS = new Set(['get_info', 'lookup_invoice', 'make_commission_invoice']);
 const BLOCKED_METHODS = new Set([
-  'pay_invoice',
-  'settle_hold_invoice',
-  'cancel_hold_invoice',
-  'create_connection',
-  'close_connection',
-  'list_connected_applications',
-  'revoke_connection',
-  'list_incoming_payments',
-  'keysend'
+  'pay_invoice', 'settle_hold_invoice', 'cancel_hold_invoice',
+  'create_connection', 'close_connection', 'list_connected_applications',
+  'revoke_connection', 'list_incoming_payments', 'keysend',
+  'send_payment', 'pay_invoice_sync',
 ]);
 
 class NwcServer {
   constructor() {
-    this.policy = new CommissionPolicy(COMMISSION_POLICY);
-    this.commissionHandler = new NwcCommissionHandler(this.policy, null);
-    this.connections = new Map(); // pubkey -> connection info
-    this.approvedConnections = new Set(); // Approved NWC connection pubkeys
+    this.svc = new CommissionService();
+    this.connections = new Map(); // pubkey -> { approved, createdAt }
+    // Pre-approve the configured marketplace
+    if (this.svc.policy.allowedPayee) {
+      this.connections.set(this.svc.policy.allowedPayee, { approved: true, createdAt: Date.now() });
+    }
   }
 
-  async handleRequest(req, res) {
-    try {
-      const contentType = req.headers['content-type'] || '';
-      let body = '';
-      
-      req.on('data', chunk => body += chunk);
-      req.on('end', async () => {
-        try {
-          const data = contentType.includes('application/nostr+json') || contentType.includes('application/json')
-            ? JSON.parse(body)
-            : null;
+  _send(res, statusCode, obj) {
+    res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(obj));
+  }
 
-          if (!data) {
-            this.sendError(res, 400, 'Invalid request');
-            return;
-          }
-
-          // NIP-47 Request: kind 23194
-          if (data.kind === 23194 && data.tags && data.tags.some(t => t[0] === 'e' && t[1].startsWith('nostr:')) {
-            await this.handleNip47Request(data, res);
-          } else if (data.method) {
-            // Direct NWC method call
-            await this.handleNwcMethod(data, res);
-          } else {
-            this.sendError(res, 400, 'Unknown request format');
-          }
-        } catch (e) {
-          this.sendError(res, 500, 'Internal error', e.message);
+  async handle(req, res) {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', async () => {
+      try {
+        const data = body ? JSON.parse(body) : {};
+        if (data.kind === 23194) {
+          await this.handleNip47(data, res);
+        } else if (data.method) {
+          await this.handleMethod(data, res);
+        } else {
+          this._send(res, 400, { result: 'error', error: { code: 'INVALID_FORMAT', message: 'Expected NIP-47 request or NWC method call' } });
         }
-      });
-    } catch (e) {
-      this.sendError(res, 500, 'Request handling error', e.message);
-    }
+      } catch (e) {
+        this._send(res, 500, { result: 'error', error: { code: 'INTERNAL', message: e.message } });
+      }
+    });
   }
 
-  async handleNip47Request(data, res) {
-    // NIP-47 request format
-    const { method, params, connection_id } = data;
-    
-    if (BLOCKED_METHODS.has(method)) {
-      this.sendError(res, 23194, 'METHOD_NOT_ALLOWED', 
-        `Method ${method} is not permitted for commission-only connections`);
-      return;
-    }
-
-    if (!ALLOWED_METHODS.has(method)) {
-      this.sendError(res, 23194, 'METHOD_NOT_FOUND', 
-        `Method ${method} is not supported`);
-      return;
-    }
-
-    const result = await this.executeMethod(method, params);
+  async handleNip47(data, res) {
+    const { method, params } = data;
+    const result = await this.execute(method, params || {});
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(result));
+    res.end(JSON.stringify({ kind: 23195, ...result }));
   }
 
-  async handleNwcMethod(data, res) {
+  async handleMethod(data, res) {
     const { method, params, pubkey } = data;
-    
-    // Validate method is allowed
-    if (BLOCKED_METHODS.has(method)) {
-      this.sendError(res, 403, 'METHOD_NOT_ALLOWED',
-        `Method ${method} is restricted`);
+    // Connection must be approved
+    if (!this.isApproved(pubkey)) {
+      this._send(res, 403, { result: 'error', error: { code: 'UNAUTHORIZED_CONNECTION', message: 'Connection not approved for commission operations' } });
       return;
     }
-    
-    if (!ALLOWED_METHODS.has(method)) {
-      this.sendError(res, 404, 'METHOD_NOT_FOUND',
-        `Method ${method} not found`);
-      return;
-    }
-
-    const result = await this.executeMethod(method, params);
+    const result = await this.execute(method, params || {});
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(result));
   }
 
-  async executeMethod(method, params = {}) {
+  isApproved(pubkey) {
+    if (!pubkey) return false;
+    const c = this.connections.get(pubkey);
+    return !!c?.approved;
+  }
+
+  async execute(method, params = {}) {
+    // Blocklist first
+    if (BLOCKED_METHODS.has(method)) {
+      return { result: 'error', error: { code: 'METHOD_NOT_ALLOWED', message: `${method} is restricted on commission-only connections` } };
+    }
+    if (!ALLOWED_METHODS.has(method)) {
+      return { result: 'error', error: { code: 'METHOD_NOT_FOUND', message: `${method} is not supported` } };
+    }
+
     switch (method) {
       case 'get_info':
         return {
           result: 'success',
           data: {
             version: 'alibi-v1.0.0',
-            supported_tiers: ['basic', 'pro'],
+            supported_tiers: ['basic'],
             commission_policy: {
-              max_rate_ppm: COMMISSION_POLICY.maxPercent * 10000,
-              payees: COMMISSION_POLICY.allowedPayee ? [COMMISSION_POLICY.allowedPayee] : [],
-              max_routing_fee: {
-                base_msat: 1000,
-                rate_ppm: COMMISSION_POLICY.maxRoutingFeePercent
-              },
-              budget_msat: COMMISSION_POLICY.budgetMsat
-            }
-          }
+              max_rate_ppm: this.svc.policy.maxRatePPM,
+              max_fixed_msat: Number(this.svc.policy.maxFixedMsat),
+              payees: this.svc.policy.allowedPayee ? [this.svc.policy.allowedPayee] : [],
+              max_routing_fee: { base_msat: Number(this.svc.policy.baseMsat), rate_ppm: Number(this.svc.policy.ratePPM) },
+              budget_msat: Number(this.svc.policy.maxBudgetMsat),
+            },
+            supported_methods: Array.from(ALLOWED_METHODS),
+          },
         };
 
       case 'make_commission_invoice': {
         const { amount, payment_hash, commission_invoice, expiry } = params;
-        
-        if (!amount || !payment_hash || !commission_invoice) {
-          return {
-            result: 'error',
-            error: {
-              code: 'INVALID_PARAMS',
-              message: 'Missing required parameters: amount, payment_hash, commission_invoice'
-            }
-          };
-        }
-
-        // Process commission request
-        const result = await this.commissionHandler.handleMakeCommissionInvoice(
-          this.policy.allowedPayee,
-          commission_invoice,
-          payment_hash,
-          expiry || 3600
-        );
-
-        return result;
+        return await this.svc.handleMakeCommissionInvoice({ amount, payment_hash, commission_invoice, expiry });
       }
 
       case 'lookup_invoice': {
         const { payment_hash } = params;
         if (!payment_hash) {
-          return {
-            result: 'error',
-            error: { code: 'INVALID_PARAMS', message: 'Missing payment_hash' }
-          };
+          return { result: 'error', error: { code: 'INVALID_PARAMS', message: 'payment_hash required' } };
         }
-
-        // Check if this is a known commission sale
-        const commission = this.commissionHandler.activeCommissions.get(payment_hash);
-        if (!commission) {
-          return {
-            result: 'error',
-            error: { code: 'NOT_FOUND', message: 'Invoice not found' }
-          };
-        }
-
-        return {
-          result: 'success',
-          data: {
-            payment_hash,
-            amount_msat: commission.saleAmountMsat.toString(),
-            is_confirmed: false,
-            is_cancelled: false,
-            is_expired: false,
-            creation_date: Math.floor(commission.createdAt / 1000),
-            expiry: expiry || 3600,
-            metadata: commission
+        if (this.svc.lnd) {
+          try {
+            const inv = await this.svc.lnd.lookupInvoice(payment_hash);
+            if (!inv) return { result: 'error', error: { code: 'NOT_FOUND', message: 'Invoice not found' } };
+            return { result: 'success', data: { payment_hash, state: inv.state, amount_msat: inv.value_msat || BigInt(inv.value || 0) * 1000n } };
+          } catch (e) {
+            return { result: 'error', error: { code: 'LOOKUP_FAILED', message: e.message } };
           }
-        };
+        }
+        return { result: 'error', error: { code: 'NO_LND', message: 'LND not configured' } };
       }
 
       default:
-        return {
-          result: 'error',
-          error: { code: 'METHOD_NOT_FOUND', message: `Unknown method: ${method}` }
-        };
+        return { result: 'error', error: { code: 'METHOD_NOT_FOUND', message: `Unknown method: ${method}` } };
     }
   }
 
-  sendError(res, statusCode, code, message, details = null) {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      result: 'error',
-      error: { code, message, details }
-    }));
-  }
-
   start() {
-    const server = http.createServer((req, res) => {
-      this.handleRequest(req, res);
-    });
-
+    const server = http.createServer((req, res) => this.handle(req, res));
     server.listen(PORT, () => {
-      console.log(`Alibi NWC Commission Server listening on port ${PORT}`);
-      console.log(`Policy: max ${COMMISSION_POLICY.maxPercent}% commission`);
-      console.log(`Budget: ${COMMISSION_POLICY.budgetMsat / 1000} sats`);
-      console.log(`Allowed payee: ${COMMISSION_POLICY.allowedPayee?.slice(0, 20)}...`);
+      console.log(`[alibi nwc] listening on port ${PORT}`);
+      console.log(`[alibi nwc] allowed methods: ${[...ALLOWED_METHODS].join(', ')}`);
+      console.log(`[alibi nwc] blocked methods: ${[...BLOCKED_METHODS].join(', ')}`);
+      console.log(`[alibi nwc] mode: ${this.svc.mode}`);
     });
-
     return server;
   }
 }
 
-// Start server if run directly
 if (require.main === module) {
-  const server = new NwcServer();
-  server.start();
+  new NwcServer().start();
 }
 
-module.exports = { NwcServer, COMMISSION_POLICY };
+module.exports = { NwcServer, ALLOWED_METHODS, BLOCKED_METHODS };

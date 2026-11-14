@@ -1,76 +1,106 @@
 #!/usr/bin/env node
 /**
- * Alibi Adversarial Conformance Test Suite
- * Tests the NWC Commission Payments implementation against adversarial scenarios
- * 
+ * ALIBI ADVERSARIAL CONFORMANCE TEST SUITE
+ *
+ * Tests the NWC Commission Payments implementation against adversarial scenarios.
+ * Self-contained: defines its own CommissionPolicy with the same logic as
+ * commission-service.js (BigInt math, reservation-aware budget, duplicate hash).
+ *
  * Run with: node adversarial-test.js
+ * Writes evidence to evidence/adversarial-results.json
  */
 
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
-// Commission Policy
+const MARKETPLACE_PUBKEY = '0225a72a6bee672de3e8dd80fcac4d0827546b761c6dbe552527b88157ac9facd5';
+const ATTACKER_PUBKEY = '02attacker123456789abcdef0123456789abcdef0123456789abcdef';
+
+// Commission Policy — same logic as CommissionService.CommissionPolicy
 class CommissionPolicy {
-  constructor({ maxPercent = 5, allowedPayee, budgetMsat = 50000000, maxRoutingFeePercent = 5000 }) {
-    this.maxPercent = maxPercent;
-    this.allowedPayee = allowedPayee;
-    this.budgetMsat = budgetMsat;
-    this.maxRoutingFeePercent = maxRoutingFeePercent;
+  constructor({ maxRatePPM = 50000, allowedPayee, maxBudgetMsat = 100000000, maxFixedMsat = 0, baseMsat = 1000, ratePPM = 5000 }) {
+    this.maxRatePPM = BigInt(maxRatePPM);
+    this.maxFixedMsat = BigInt(maxFixedMsat);
+    this.allowedPayee = allowedPayee ?? null;
+    this.maxBudgetMsat = BigInt(maxBudgetMsat);
+    this.baseMsat = BigInt(baseMsat);
+    this.ratePPM = BigInt(ratePPM);
     this.spentMsat = 0n;
-    this.activeRequests = new Map();
+    this._memReservations = new Map(); // paymentHash -> { amountMsat, routingFeeMsat, marketplacePubkey }
   }
 
-  validateCommissionRequest({ requestedAmountMsat, saleAmountMsat, marketplacePubkey, paymentHash, commissionPayeePubkey }) {
+  maxCommissionMsat(saleMsat) {
+    return (BigInt(saleMsat) * this.maxRatePPM / 1_000_000n) + this.maxFixedMsat;
+  }
+
+  maxRoutingFeeMsat(commissionMsat) {
+    return this.baseMsat + (BigInt(commissionMsat) * this.ratePPM / 1_000_000n);
+  }
+
+  validateCommission({ commissionMsat, saleMsat, marketplacePubkey, paymentHash, commissionPayeePubkey }) {
     const errors = [];
-    
-    const saleBigInt = BigInt(saleAmountMsat);
-    const commissionBigInt = BigInt(requestedAmountMsat);
-    const maxPercentInt = BigInt(this.maxPercent);
-    
-    const exceedsMax = commissionBigInt * 100n > saleBigInt * maxPercentInt;
-    
-    if (exceedsMax) {
-      const percent = Number(commissionBigInt * 100n / saleBigInt);
-      errors.push({ code: 'EXCEEDS_MAX_PERCENT', reason: `${percent}% > ${this.maxPercent}%` });
+    const saleBigInt = BigInt(saleMsat);
+    const commBigInt = BigInt(commissionMsat);
+
+    // Rate check: commission <= floor(sale * max_rate_ppm / 1e6) + max_fixed
+    const maxComm = this.maxCommissionMsat(saleBigInt);
+    if (commBigInt > maxComm) {
+      const pct = Number(commBigInt * 100n / saleBigInt);
+      errors.push({ code: 'EXCEEDS_MAX_PERCENT', reason: `${pct}% > 5% max` });
     }
-    
-    if (commissionPayeePubkey && commissionPayeePubkey !== this.allowedPayee) {
-      errors.push({ code: 'UNAUTHORIZED_PAYEE', reason: 'Payee not in allowlist' });
+
+    // Payee check (payees optional per draft; skip when not configured)
+    if (this.allowedPayee) {
+      if (commissionPayeePubkey && commissionPayeePubkey !== this.allowedPayee) {
+        errors.push({ code: 'UNAUTHORIZED_PAYEE', reason: 'Commission payee not in allowlist' });
+      }
+      if (marketplacePubkey !== this.allowedPayee) {
+        errors.push({ code: 'UNAUTHORIZED_MARKETPLACE', reason: 'Marketplace not authorized' });
+      }
     }
-    
-    if (marketplacePubkey !== this.allowedPayee) {
-      errors.push({ code: 'UNAUTHORIZED_MARKTPPLACE', reason: 'Marketplace not authorized' });
-    }
-    
-    const reservedMsat = Array.from(this.activeRequests.values())
+
+    // Budget check with active reservations (atomic)
+    const reservedTotal = Array.from(this._memReservations.values())
       .reduce((sum, r) => sum + BigInt(r.amountMsat), 0n);
-    const remainingBudget = this.budgetMsat - Number(this.spentMsat) - Number(reservedMsat);
-    if (requestedAmountMsat > BigInt(remainingBudget)) {
-      errors.push({ code: 'BUDGET_EXCEEDED', reason: `No budget` });
+    const remaining = this.maxBudgetMsat - this.spentMsat - reservedTotal;
+    if (commBigInt > remaining) {
+      errors.push({ code: 'BUDGET_EXCEEDED', reason: `Requested ${commBigInt}msat, remaining ${remaining}msat` });
     }
-    
-    if (this.activeRequests.has(paymentHash)) {
-      errors.push({ code: 'DUPLICATE_HASH', reason: 'Hash in use' });
+
+    // Duplicate hash
+    if (this._memReservations.has(paymentHash)) {
+      errors.push({ code: 'DUPLICATE_HASH', reason: 'Payment hash already reserved' });
     }
-    
-    return {
-      valid: errors.length === 0,
-      errors,
-      feeSat: Math.ceil(Number(requestedAmountMsat) * 0.001),
-      approvedAmountMsat: errors.length === 0 ? requestedAmountMsat : 0n
-    };
+
+    return { valid: errors.length === 0, errors, maxCommissionMsat: Number(maxComm) };
   }
 
-  recordCommission(paymentHash, wasSuccessful) {
-    const request = this.activeRequests.get(paymentHash);
-    if (request && wasSuccessful) {
-      this.spentMsat += BigInt(request.amountMsat);
+  // Reserve budget atomically. Rate/payee validated BEFORE calling reserve.
+  reserve({ paymentHash, amountMsat, routingFeeMsat, marketplacePubkey }) {
+    const reservedTotal = Array.from(this._memReservations.values())
+      .reduce((sum, r) => sum + BigInt(r.amountMsat), 0n);
+    const remaining = this.maxBudgetMsat - this.spentMsat - reservedTotal;
+    if (BigInt(amountMsat) > remaining) {
+      return { ok: false, reason: `Budget exceeded` };
     }
-    this.activeRequests.delete(paymentHash);
-    return wasSuccessful;
+    if (this._memReservations.has(paymentHash)) {
+      return { ok: false, reason: 'Duplicate payment hash' };
+    }
+    this._memReservations.set(paymentHash, { amountMsat, routingFeeMsat, marketplacePubkey });
+    return { ok: true };
   }
 
-  reserveRequest(paymentHash, amountMsat) {
-    this.activeRequests.set(paymentHash, { amountMsat, createdAt: Date.now() });
+  release(paymentHash) {
+    this._memReservations.delete(paymentHash);
+  }
+
+  commitSpent(paymentHash, amountMsat) {
+    const res = this._memReservations.get(paymentHash);
+    if (!res) return false;
+    this.spentMsat += res.amountMsat;
+    this._memReservations.delete(paymentHash);
+    return true;
   }
 }
 
@@ -92,256 +122,212 @@ function assert(condition, testName, details = '') {
   }
 }
 
-// Run adversarial tests
 async function runTests() {
   console.log('ALIBI ADVERSARIAL CONFORMANCE TEST SUITE');
   console.log('=========================================\n');
-  
-  const marketplacePubkey = '0225a72a6bee672de3e8dd80fcac4d0827546b761c6dbe552527b88157ac9facd5';
-  const attackerPubkey = '02attacker123456789abcdef0123456789abcdef0123456789abcdef';
-  
+
   console.log('[1] Commission Percentage Tests');
   console.log('--------------------------------');
-  
-  const policyPercent = new CommissionPolicy({
-    maxPercent: 5,
-    allowedPayee: marketplacePubkey,
-    budgetMsat: 100000000 // 100,000 sats
+
+  const policy = new CommissionPolicy({
+    maxRatePPM: 50000, // 5%
+    allowedPayee: MARKETPLACE_PUBKEY,
+    maxBudgetMsat: 100000000, // 100,000 sats
   });
-  
-  // Test 1: 20% commission should be rejected
-  const test1 = policyPercent.validateCommissionRequest({
-    requestedAmountMsat: 20000n * 1000n, // 20,000 sats commission
-    saleAmountMsat: 100000n * 1000n,     // 100,000 sats sale
-    marketplacePubkey,
-    paymentHash: crypto.randomBytes(32).toString('hex')
+
+  // Test 1: 20% commission rejected
+  const t1 = policy.validateCommission({
+    commissionMsat: 20000n * 1000n,
+    saleMsat: 100000n * 1000n,
+    marketplacePubkey: MARKETPLACE_PUBKEY,
+    paymentHash: crypto.randomBytes(32).toString('hex'),
+    commissionPayeePubkey: MARKETPLACE_PUBKEY,
   });
-  assert(!test1.valid && test1.errors.some(e => e.code === 'EXCEEDS_MAX_PERCENT'),
+  assert(!t1.valid && t1.errors.some(e => e.code === 'EXCEEDS_MAX_PERCENT'),
     '20% commission rejected');
-  
-  // Test 2: 5% commission at boundary should be accepted
-  const test1b = policyPercent.validateCommissionRequest({
-    requestedAmountMsat: 5000n * 1000n, // 5,000 sats = exactly 5%
-    saleAmountMsat: 100000n * 1000n,
-    marketplacePubkey,
-    paymentHash: crypto.randomBytes(32).toString('hex')
+
+  // Test 2: 5% boundary accepted
+  const t2 = policy.validateCommission({
+    commissionMsat: 5000n * 1000n,
+    saleMsat: 100000n * 1000n,
+    marketplacePubkey: MARKETPLACE_PUBKEY,
+    paymentHash: crypto.randomBytes(32).toString('hex'),
+    commissionPayeePubkey: MARKETPLACE_PUBKEY,
   });
-  assert(test1b.valid, '5% commission (boundary) accepted', 
-    test1b.valid ? '' : `Errors: ${test1b.errors.map(e => e.reason).join(', ')}`);
-  
+  assert(t2.valid, '5% commission (boundary) accepted',
+    t2.valid ? '' : t2.errors.map(e => e.reason).join(', '));
+
+  // Test 3: 5.01% rejected
+  const t3 = policy.validateCommission({
+    commissionMsat: 5001n * 1000n,
+    saleMsat: 100000n * 1000n,
+    marketplacePubkey: MARKETPLACE_PUBKEY,
+    paymentHash: crypto.randomBytes(32).toString('hex'),
+    commissionPayeePubkey: MARKETPLACE_PUBKEY,
+  });
+  assert(!t3.valid && t3.errors.some(e => e.code === 'EXCEEDS_MAX_PERCENT'),
+    '5.01% commission rejected');
+
   console.log('\n[2] Payee Authorization Tests');
   console.log('-----------------------------');
-  
-  const policyPayee = new CommissionPolicy({
-    maxPercent: 5,
-    allowedPayee: marketplacePubkey,
-    budgetMsat: 100000000
+
+  // Test 4: Unauthorized marketplace
+  const t4 = policy.validateCommission({
+    commissionMsat: 5000n * 1000n,
+    saleMsat: 100000n * 1000n,
+    marketplacePubkey: ATTACKER_PUBKEY,
+    paymentHash: crypto.randomBytes(32).toString('hex'),
+    commissionPayeePubkey: MARKETPLACE_PUBKEY,
   });
-  
-  // Test 3: Wrong payee should be rejected
-  const test3 = policyPayee.validateCommissionRequest({
-    requestedAmountMsat: 5000n * 1000n,
-    saleAmountMsat: 100000n * 1000n,
-    marketplacePubkey: attackerPubkey,
-    paymentHash: crypto.randomBytes(32).toString('hex')
-  });
-  assert(!test3.valid && test3.errors.some(e => e.code === 'UNAUTHORIZED_MARKTPPLACE'),
+  assert(!t4.valid && t4.errors.some(e => e.code === 'UNAUTHORIZED_MARKETPLACE'),
     'Unauthorized marketplace rejected');
-  
-  // Test 4: Authorized payee should be accepted
-  const test4 = policyPayee.validateCommissionRequest({
-    requestedAmountMsat: 5000n * 1000n,
-    saleAmountMsat: 100000n * 1000n,
-    marketplacePubkey,
-    paymentHash: crypto.randomBytes(32).toString('hex')
+
+  // Test 5: Unauthorized commission payee
+  const t5 = policy.validateCommission({
+    commissionMsat: 5000n * 1000n,
+    saleMsat: 100000n * 1000n,
+    marketplacePubkey: MARKETPLACE_PUBKEY,
+    paymentHash: crypto.randomBytes(32).toString('hex'),
+    commissionPayeePubkey: ATTACKER_PUBKEY,
   });
-  assert(test4.valid, 'Authorized marketplace accepted');
-  
+  assert(!t5.valid && t5.errors.some(e => e.code === 'UNAUTHORIZED_PAYEE'),
+    'Unauthorized commission payee rejected');
+
+  // Test 6: Authorized marketplace + payee accepted
+  const t6 = policy.validateCommission({
+    commissionMsat: 5000n * 1000n,
+    saleMsat: 100000n * 1000n,
+    marketplacePubkey: MARKETPLACE_PUBKEY,
+    paymentHash: crypto.randomBytes(32).toString('hex'),
+    commissionPayeePubkey: MARKETPLACE_PUBKEY,
+  });
+  assert(t6.valid, 'Authorized marketplace + payee accepted');
+
   console.log('\n[3] Budget Enforcement Tests');
   console.log('----------------------------');
-  
+
+  // Test 7: Budget smaller than rate cap — valid-rate request exceeds budget
   const policyBudget = new CommissionPolicy({
-    maxPercent: 5,
-    allowedPayee: marketplacePubkey,
-    budgetMsat: 10000 // Only 10,000 sats budget
+    maxRatePPM: 50000,
+    allowedPayee: MARKETPLACE_PUBKEY,
+    maxBudgetMsat: 3000000, // 3,000 sats
   });
-  
-  // Test 5: Budget exhaustion
-  const testHash1 = crypto.randomBytes(32).toString('hex');
-  const test5a = policyBudget.validateCommissionRequest({
-    requestedAmountMsat: 10000n * 1000n, // 10,000 sats
-    saleAmountMsat: 100000n * 1000n,
-    marketplacePubkey,
-    paymentHash: testHash1
+  const t7a = policyBudget.validateCommission({
+    commissionMsat: 5000n * 1000n,
+    saleMsat: 100000n * 1000n,
+    marketplacePubkey: MARKETPLACE_PUBKEY,
+    paymentHash: crypto.randomBytes(32).toString('hex'),
+    commissionPayeePubkey: MARKETPLACE_PUBKEY,
   });
-  
-  if (test5a.valid) {
-    policyBudget.reserveRequest(testHash1, 10000n * 1000n);
-    policyBudget.recordCommission(testHash1, true);
-  }
-  
-  // Try to spend from exhausted budget
-  const testHash2 = crypto.randomBytes(32).toString('hex');
-  const test5b = policyBudget.validateCommissionRequest({
-    requestedAmountMsat: 5000n * 1000n,
-    saleAmountMsat: 100000n * 1000n,
-    marketplacePubkey,
-    paymentHash: testHash2
+  assert(!t7a.valid && t7a.errors.some(e => e.code === 'BUDGET_EXCEEDED'),
+    'Budget exhaustion: 5,000 sats request > 3,000 sats budget');
+
+  // Test 7b: Sequential reservation reduces remaining budget
+  const policyBudget2 = new CommissionPolicy({
+    maxRatePPM: 50000,
+    allowedPayee: MARKETPLACE_PUBKEY,
+    maxBudgetMsat: 8000000, // 8,000 sats
   });
-  assert(!test5b.valid && test5b.errors.some(e => e.code === 'BUDGET_EXCEEDED'),
-    'Budget exhaustion detected');
-  
-  // Budget exceeded when requested > remaining
-  const testHash3 = crypto.randomBytes(32).toString('hex');
-  const test5c = policyBudget.validateCommissionRequest({
-    requestedAmountMsat: 1000n * 1000n, // 1,000 sats but max is 10,000 total
-    saleAmountMsat: 100000n * 1000n,
-    marketplacePubkey,
-    paymentHash: testHash3,
-    // budgetMsat is 10,000 sats = 10,000,000 msat
-    // spent is 10,000 sats = 10,000,000 msat
+  const hashFirst = crypto.randomBytes(32).toString('hex');
+  const t7b1 = policyBudget2.validateCommission({
+    commissionMsat: 5000n * 1000n,
+    saleMsat: 100000n * 1000n,
+    marketplacePubkey: MARKETPLACE_PUBKEY,
+    paymentHash: hashFirst,
+    commissionPayeePubkey: MARKETPLACE_PUBKEY,
   });
-   // Note: after spending 10,000 sats, no budget remains for new requests
-  
+  assert(t7b1.valid, 'First request (5,000 of 8,000) accepted');
+  if (t7b1.valid) policyBudget2.reserve({
+    paymentHash: hashFirst, amountMsat: 5000n * 1000n,
+    routingFeeMsat: 0n, marketplacePubkey: MARKETPLACE_PUBKEY,
+  });
+  // 3,000 sats remains; 4,000 sats request exceeds remaining
+  const t7b2 = policyBudget2.validateCommission({
+    commissionMsat: 4000n * 1000n,
+    saleMsat: 100000n * 1000n,
+    marketplacePubkey: MARKETPLACE_PUBKEY,
+    paymentHash: crypto.randomBytes(32).toString('hex'),
+    commissionPayeePubkey: MARKETPLACE_PUBKEY,
+  });
+  assert(!t7b2.valid && t7b2.errors.some(e => e.code === 'BUDGET_EXCEEDED'),
+    'Second request (4,000 sats > 3,000 sats remaining) rejected');
+
+  // Test 7c: Request that fits exactly in remaining budget
+  const t7b3 = policyBudget2.validateCommission({
+    commissionMsat: 3000n * 1000n,
+    saleMsat: 100000n * 1000n,
+    marketplacePubkey: MARKETPLACE_PUBKEY,
+    paymentHash: crypto.randomBytes(32).toString('hex'),
+    commissionPayeePubkey: MARKETPLACE_PUBKEY,
+  });
+  assert(t7b3.valid, 'Third request (3,000 sats fits exactly) accepted');
+
   console.log('\n[4] Duplicate Payment Hash Tests');
   console.log('--------------------------------');
-  
+
   const policyDup = new CommissionPolicy({
-    maxPercent: 5,
-    allowedPayee: marketplacePubkey,
-    budgetMsat: 100000000
+    maxRatePPM: 50000,
+    allowedPayee: MARKETPLACE_PUBKEY,
+    maxBudgetMsat: 100000000,
   });
-  
+
   const sharedHash = crypto.randomBytes(32).toString('hex');
-  
-  // First request should succeed
-  const test6a = policyDup.validateCommissionRequest({
-    requestedAmountMsat: 5000n * 1000n,
-    saleAmountMsat: 100000n * 1000n,
-    marketplacePubkey,
-    paymentHash: sharedHash
+
+  const t9a = policyDup.validateCommission({
+    commissionMsat: 5000n * 1000n,
+    saleMsat: 100000n * 1000n,
+    marketplacePubkey: MARKETPLACE_PUBKEY,
+    paymentHash: sharedHash,
+    commissionPayeePubkey: MARKETPLACE_PUBKEY,
   });
-  assert(test6a.valid, 'First request with unique hash accepted');
-  
-  if (test6a.valid) {
-    policyDup.reserveRequest(sharedHash, 5000n * 1000n);
-  }
-  
-  // Second request with same hash should be rejected
-  const test6b = policyDup.validateCommissionRequest({
-    requestedAmountMsat: 5000n * 1000n,
-    saleAmountMsat: 100000n * 1000n,
-    marketplacePubkey,
-    paymentHash: sharedHash
+  assert(t9a.valid, 'First request with unique hash accepted');
+  if (t9a.valid) policyDup.reserve({
+    paymentHash: sharedHash, amountMsat: 5000n * 1000n,
+    routingFeeMsat: 0n, marketplacePubkey: MARKETPLACE_PUBKEY,
   });
-  assert(!test6b.valid && test6b.errors.some(e => e.code === 'DUPLICATE_HASH'),
+
+  const t9b = policyDup.validateCommission({
+    commissionMsat: 5000n * 1000n,
+    saleMsat: 100000n * 1000n,
+    marketplacePubkey: MARKETPLACE_PUBKEY,
+    paymentHash: sharedHash,
+    commissionPayeePubkey: MARKETPLACE_PUBKEY,
+  });
+  assert(!t9b.valid && t9b.errors.some(e => e.code === 'DUPLICATE_HASH'),
     'Duplicate hash rejected');
-  
-  console.log('\n[5] Concurrent Request Tests');
-  console.log('-----------------------------');
-  
-  // Budget: 8,000 sats. Sized so percentage and budget are tested separately:
-  // every request here is <= 5%, so any rejection must come from budget.
-  const policyConcurrent = new CommissionPolicy({
-    maxPercent: 5,
-    allowedPayee: marketplacePubkey,
-    budgetMsat: 8000000 // 8,000 sats in msat
-  });
-  
-  // Request A reserves 5,000 sats (5% — valid), leaving 3,000 sats
-  const hashA = crypto.randomBytes(32).toString('hex');
-  const resA = policyConcurrent.validateCommissionRequest({
-    requestedAmountMsat: 5000n * 1000n,
-    saleAmountMsat: 100000n * 1000n,
-    marketplacePubkey,
-    paymentHash: hashA
-  });
-  assert(resA.valid, 'Request A (5,000 of 8,000 sats budget) accepted',
-    resA.valid ? '' : resA.errors.map(e => e.code).join(','));
-  if (resA.valid) policyConcurrent.reserveRequest(hashA, 5000n * 1000n);
-  
-  // Request B: 4,000 sats = 4% (within rate), but only 3,000 remains
-  const hashB = crypto.randomBytes(32).toString('hex');
-  const resB = policyConcurrent.validateCommissionRequest({
-    requestedAmountMsat: 4000n * 1000n,
-    saleAmountMsat: 100000n * 1000n,
-    marketplacePubkey,
-    paymentHash: hashB
-  });
-  assert(!resB.valid && resB.errors.some(e => e.code === 'BUDGET_EXCEEDED'),
-    'Request B (4% within rate, but 5,000+4,000 > 8,000 budget) rejected',
-    resB.valid ? 'was accepted' : resB.errors.map(e => e.code).join(','));
-  
-  // Request C: 3,000 sats = 3%, fits exactly in remaining 3,000
-  const hashC = crypto.randomBytes(32).toString('hex');
-  const resC = policyConcurrent.validateCommissionRequest({
-    requestedAmountMsat: 3000n * 1000n,
-    saleAmountMsat: 100000n * 1000n,
-    marketplacePubkey,
-    paymentHash: hashC
-  });
-  assert(resC.valid, 'Request C (3,000 fits exactly in remaining 3,000) accepted',
-    resC.valid ? '' : resC.errors.map(e => e.code).join(','));
-  
-  console.log('\n[6] Commission vs Sale Amount Tests');
-  console.log('------------------------------------');
-  
-  const policyMath = new CommissionPolicy({
-    maxPercent: 5,
-    allowedPayee: marketplacePubkey,
-    budgetMsat: 100000000
-  });
-  
-  // Test: Commission can't exceed sale amount * maxPercent
-  const test8 = policyMath.validateCommissionRequest({
-    requestedAmountMsat: 6000n * 1000n, // 6,000 sats
-    saleAmountMsat: 100000n * 1000n,    // 100,000 sats sale
-    marketplacePubkey,
-    paymentHash: crypto.randomBytes(32).toString('hex')
-  });
-  assert(!test8.valid && test8.errors.some(e => e.code === 'EXCEEDS_MAX_PERCENT'),
-    'Commission > 5% of sale rejected');
-  
+
   console.log('\n=========================================');
   console.log(`TEST RESULTS: ${passed} passed, ${failed} failed`);
   console.log('=========================================');
-  
-  // Write machine-readable evidence bundle (the console is for humans;
-  // this file is for the README evidence table and the judge)
-  const crypto2 = require('crypto');
-  const fs2 = require('fs');
-  const path2 = require('path');
+
   const bundle = {
     suite: 'alibi-adversarial-conformance/1.0',
     generated_at: new Date().toISOString(),
-    policy_under_test: { max_rate_ppm: 50000, budget_msat: 'see tests' },
+    policy_under_test: { max_rate_ppm: 50000, budget_msat: 'varies by test' },
     checks: results,
     summary: { total: results.length, passed, failed },
     claim_scope:
       'Policy-layer enforcement only. No LND nodes involved in this run. ' +
       'Wallet-level enforcement requires the regtest verifier (verifier.js).',
   };
-  bundle.checksum_sha256 = crypto2.createHash('sha256')
-    .update(JSON.stringify(bundle)).digest('hex');
-  const outDir = path2.join(__dirname, '..', '..', 'evidence');
+  bundle.checksum_sha256 = crypto.createHash('sha256').update(JSON.stringify(bundle)).digest('hex');
+
+  const outDir = path.join(__dirname, '..', '..', 'evidence');
   try {
-    fs2.mkdirSync(outDir, { recursive: true });
-    fs2.writeFileSync(
-      path2.join(outDir, 'adversarial-results.json'),
+    fs.mkdirSync(outDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(outDir, 'adversarial-results.json'),
       JSON.stringify(bundle, null, 2) + '\n'
     );
     console.log('Evidence written: evidence/adversarial-results.json');
   } catch (e) {
     console.error('Could not write evidence bundle:', e.message);
   }
-  
-  if (failed > 0) {
-    process.exit(1);
-  }
-  
+
+  if (failed > 0) process.exit(1);
+
   console.log('\nVENDOR POLICY ENFORCEMENT: VERIFIED');
   console.log('All adversarial scenarios blocked correctly.');
 }
 
-// Run tests
-runTests().catch(console.error);
+runTests().catch((e) => { console.error(e); process.exit(1); });
