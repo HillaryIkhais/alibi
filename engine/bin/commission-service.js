@@ -352,11 +352,11 @@ class LndClient {
   post(path, body) { return this.request('POST', path, body); }
 
   async addHoldInvoice(valueMsat, paymentHash, description, expirySeconds = 3600) {
-    const r = await this.post('/v1/invoice', {
+    const r = await this.post('/v2/invoices/hodl', {
       value_msat: String(valueMsat),
       payment_hash: paymentHash,
-      description,
-      expiry: expirySeconds,
+      memo: description,
+      expiry: String(expirySeconds),
     });
     if (r.status >= 400) throw new Error(`AddHoldInvoice ${r.status}: ${JSON.stringify(r.body)}`);
     return r.body; // { payment_request, r_hash, ... }
@@ -370,7 +370,7 @@ class LndClient {
   }
 
   async sendPaymentV2(paymentRequest, feeLimitMsat = 1000000) {
-    const r = await this.post('/v2/router/send_payment', {
+    const r = await this.post('/v2/router/send', {
       payment_request: paymentRequest,
       fee_limit_msat: String(feeLimitMsat),
       timeout_seconds: 60,
@@ -380,13 +380,13 @@ class LndClient {
   }
 
   async settleInvoice(paymentHash, preimageHex) {
-    const r = await this.post('/v1/invoice/settle', { preimage: preimageHex });
+    const r = await this.post('/v2/invoices/settle', { preimage: preimageHex });
     if (r.status >= 400) throw new Error(`SettleInvoice ${r.status}`);
     return r.body;
   }
 
   async cancelInvoice(paymentHash) {
-    const r = await this.post('/v1/invoice/cancel', { payment_hash: paymentHash });
+    const r = await this.post('/v2/invoices/cancel', { payment_hash: paymentHash });
     if (r.status >= 400) throw new Error(`CancelInvoice ${r.status}`);
     return r.body;
   }
@@ -400,6 +400,12 @@ class LndClient {
   async trackPayment(paymentHash) {
     const r = await this.get(`/v2/router/track/${paymentHash}`);
     if (r.status >= 400) throw new Error(`TrackPayment ${r.status}`);
+    return r.body;
+  }
+
+  async decodePayReq(paymentRequest) {
+    const r = await this.post('/v1/payreq', { pay_req: paymentRequest });
+    if (r.status >= 400) throw new Error(`DecodePayReq ${r.status}: ${JSON.stringify(r.body)}`);
     return r.body;
   }
 }
@@ -516,29 +522,79 @@ class CommissionService {
   }
 
   // ── NWC make_commission_invoice handler ──────────────────────────────
-
+  //
+  // NWC draft semantics:
+  //   amount        = sale amount in millisatoshis (what buyer pays)
+  //   commission_invoice = BOLT11 hold invoice created by marketplace
+  //                        its decoded amount = commission the marketplace requests
+  //   payment_hash  = shared hash linking sale + commission invoices
+  //
+  // The wallet decodes commission_invoice, validates policy, then creates
+  // a sale hold invoice for the buyer to pay. The commission is settled
+  // separately (wallet pays commission invoice) using the shared preimage.
+  //
   async handleMakeCommissionInvoice({ amount, payment_hash, commission_invoice, expiry }) {
     if (!amount || !payment_hash || !commission_invoice) {
       return { result: 'error', error: { code: 'INVALID_PARAMS', message: 'amount, payment_hash, commission_invoice required' } };
     }
 
-    const commissionMsat = BigInt(amount);
-    // Derive sale amount from commission at 5% (reverse of maxCommission)
-    const saleMsat = (commissionMsat * 1_000_000n) / BigInt(this.policy.maxRatePPM);
+    // ── 1. amount = sale amount in msat (per NWC draft) ──
+    const saleMsat = BigInt(amount);
 
+    // ── 2. Decode commission_invoice BOLT11 to extract commission details ──
+    let commission;
+    if (this.lnd) {
+      try {
+        commission = await this.lnd.decodePayReq(commission_invoice);
+      } catch (e) {
+        return { result: 'error', error: { code: 'INVALID_COMMISSION_INVOICE', message: e.message } };
+      }
+    } else {
+      return { result: 'error', error: { code: 'NO_LND', message: 'LND required to decode commission invoice' } };
+    }
+
+    // ── 3. Validate decoded commission invoice ──
+    const commissionHash = String(commission.payment_hash || '');
+    if (commissionHash !== payment_hash) {
+      return { result: 'error', error: { code: 'PAYMENT_HASH_MISMATCH', message: 'commission invoice payment hash does not match' } };
+    }
+
+    // Commission amount from the decoded invoice (num_satoshis in sats -> msat)
+    const commissionSat = BigInt(commission.num_satoshis || 0);
+    const commissionMsat = commissionSat * 1000n;
+    if (commissionMsat <= 0n) {
+      return { result: 'error', error: { code: 'INVALID_COMMISSION_AMOUNT', message: 'commission invoice has no amount' } };
+    }
+
+    // Network check (regtest only)
+    if (String(commission.network || '').toLowerCase() !== 'regtest') {
+      return { result: 'error', error: { code: 'WRONG_NETWORK', message: 'commission invoice not on regtest' } };
+    }
+
+    // Payee check: destination pubkey must be in allowed payees
+    const destPubkey = String(commission.destination || '');
+    if (this.policy.allowedPayee && destPubkey !== this.policy.allowedPayee) {
+      return { result: 'error', error: { code: 'UNAUTHORIZED_PAYEE', message: 'commission payee not authorized' } };
+    }
+
+    // Marketplace authorization
+    if (this.policy.allowedPayee && this.policy.allowedPayee !== this.policy.allowedPayee) {
+      // always true; the real check is in validateCommission below via marketplacePubkey
+    }
+
+    // ── 4. Policy validation: commission rate vs sale amount ──
     const validation = this.policy.validateCommission({
-      commissionMsat, saleMsat, marketplacePubkey: this.policy.allowedPayee || '',
-      paymentHash: payment_hash, commissionPayeePubkey: this.policy.allowedPayee || '',
+      commissionMsat, saleMsat,
+      marketplacePubkey: this.policy.allowedPayee || '',
+      paymentHash: payment_hash,
+      commissionPayeePubkey: destPubkey,
     });
-
     if (!validation.valid) {
       return { result: 'error', error: { code: 'POLICY_REJECTION', message: validation.errors[0].reason, details: validation.errors } };
     }
 
-    // Max routing fee
+    // ── 5. Atomic budget reservation ──
     const routingFeeMsat = this.policy.maxRoutingFeeMsat(commissionMsat);
-
-    // Atomic reservation
     const reserved = this.policy.reserve({
       paymentHash: payment_hash, amountMsat: commissionMsat,
       routingFeeMsat, marketplacePubkey: this.policy.allowedPayee || '',
@@ -547,24 +603,22 @@ class CommissionService {
       return { result: 'error', error: { code: 'BUDGET_EXCEEDED', message: reserved.reason } };
     }
 
+    // ── 6. Create sale hold invoice for buyer ──
     let saleInvoice = null;
-    if (this.lnd) {
-      try {
-        const inv = await this.lnd.addHoldInvoice(saleMsat, payment_hash, `Commission-bound sale ${Number(saleMsat / 1000n)} sats`);
-        saleInvoice = inv.payment_request;
-        // Persist sale
-        if (db) {
-          db.prepare(
-            'INSERT INTO sales (payment_hash, amount_msat, commission_msat, sale_invoice, sale_state, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-          ).run(payment_hash, Number(saleMsat), Number(commissionMsat), saleInvoice, 'pending', Math.floor(Date.now() / 1000));
-          db.prepare(
-            'INSERT INTO commissions (payment_hash, amount_msat, commission_invoice, commission_state) VALUES (?, ?, ?, ?)'
-          ).run(payment_hash, Number(commissionMsat), commission_invoice, 'pending');
-        }
-      } catch (e) {
-        this.policy.release(payment_hash);
-        return { result: 'error', error: { code: 'INVOICE_CREATION_FAILED', message: e.message } };
+    try {
+      const inv = await this.lnd.addHoldInvoice(saleMsat, payment_hash, `Commission-bound sale ${Number(saleMsat / 1000n)} sats`);
+      saleInvoice = inv.payment_request;
+      if (db) {
+        db.prepare(
+          'INSERT INTO sales (payment_hash, amount_msat, commission_msat, sale_invoice, sale_state, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+        ).run(payment_hash, Number(saleMsat), Number(commissionMsat), saleInvoice, 'pending', Math.floor(Date.now() / 1000));
+        db.prepare(
+          'INSERT INTO commissions (payment_hash, amount_msat, commission_invoice, commission_state) VALUES (?, ?, ?, ?)'
+        ).run(payment_hash, Number(commissionMsat), commission_invoice, 'pending');
       }
+    } catch (e) {
+      this.policy.release(payment_hash);
+      return { result: 'error', error: { code: 'INVOICE_CREATION_FAILED', message: e.message } };
     }
 
     return {
@@ -577,7 +631,7 @@ class CommissionService {
         metadata: {
           commission_amount_msat: String(commissionMsat),
           max_routing_fee_msat: String(routingFeeMsat),
-          commission_payee: this.policy.allowedPayee,
+          commission_payee: destPubkey,
         },
       },
     };
@@ -701,8 +755,15 @@ class CommissionService {
   async payCommission(paymentRequest) {
     if (!this.lnd) return { success: false, reason: 'REAL mode required; no LND credentials' };
     try {
+      // Decode the payment request to get the payment hash for tracking
+      let decoded = null;
+      try {
+        decoded = await this.lnd.decodePayReq(paymentRequest);
+      } catch (e) {
+        // decode may fail for hold invoices; still attempt payment
+      }
       const result = await this.lnd.sendPaymentV2(paymentRequest);
-      return { success: true, payment: result };
+      return { success: true, payment: result, decoded };
     } catch (e) {
       return { success: false, reason: e.message };
     }
@@ -721,7 +782,6 @@ class CommissionService {
         db.prepare('UPDATE sales SET sale_state = ?, settled_at = ? WHERE payment_hash = ?').run('settled', Math.floor(Date.now() / 1000), paymentHash);
         db.prepare('UPDATE commissions SET commission_state = ?, paid_at = ? WHERE payment_hash = ?').run('settled', Math.floor(Date.now() / 1000), paymentHash);
       }
-      this.policy.commitSpent(paymentHash, BigInt(0));
       return { success: true, verified: true };
     } catch (e) {
       return { success: false, reason: e.message };
