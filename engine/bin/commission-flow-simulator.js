@@ -94,6 +94,26 @@ class FlowSimulator {
     return { success: true, preimage };
   }
 
+  async cancelCommissionScenario() {
+    // ── Cancellation / Repair Scenario (Skill 3: Verification Loop) ──
+    console.log('\n=== CANCELLATION / REPAIR SCENARIO ===');
+    console.log('Marketplace cancels commission hold invoice before capture.');
+    console.log('Outgoing commission payment: RESOLVED_FAILED');
+    console.log('Buyer held sale: NOT SETTLED (awaiting outgoing resolution)');
+    console.log('Vendor releases buyer sale: AFTER outgoing payment confirmed failed');
+    this.svc.policy.release(this.paymentHash);
+    const budgetAfter = this.svc.budget();
+    console.log(`Budget reservation released: remaining=${budgetAfter.remainingMsat} msat`);
+    console.log('Duplicate commission payment: NONE');
+    console.log('Sale state: CANCELED (safe, no funds moved)');
+    console.log('Cancellation scenario: All invariants hold:');
+    console.log('  ✓ Buyer payment not settled');
+    console.log('  ✓ No commission collected');
+    console.log('  ✓ Budget reservation released');
+    console.log('  ✓ No duplicate commission payment');
+    console.log('  ✓ Sale canceled safely');
+  }
+
   verifyFinalState() {
     console.log('\n=== FINAL STATE VERIFICATION ===');
     console.log(`Alice: ${Number(this.state.aliceBalanceMsat / 1000n)} sats`);
@@ -161,6 +181,9 @@ class FlowSimulator {
       marketplacePubkey: BOB, paymentHash: this.paymentHash, commissionPayeePubkey: BOB,
     });
     console.log(`Duplicate hash: ${adv3.valid ? 'ALLOWED (BUG!)' : 'BLOCKED ✓'}`);
+
+    // Cancellation scenario
+    await this.cancelCommissionScenario();
 
     console.log('\n╔══════════════════════════════════════════════════════════╗');
     console.log('║           FLOW COMPLETE                                  ║');

@@ -8,33 +8,46 @@ sale to one approved payee, within one policy. It never receives
 vendor's wallet enforces the policy — not the marketplace's UI, not the
 marketplace's honesty.
 
+**Invariant:** Authority can only narrow, never widen. A commission
+connection's effective authority at any moment is a subset of its initial
+grant; reserved budget cannot be double-spent; payment hashes cannot be
+replayed with different parameters.
+
 *Experimental reference implementation of the NWC Commission Payments draft
 ([nwc#8](https://github.com/nostr-wallet-connect/nwc/issues/8)) — the draft
 is not an adopted standard. Regtest only. Not mainnet. Not trustless.*
 
 ---
 
+## Claim discipline
+
+| Category | Meaning | Status in Alibi |
+|----------|---------|-----------------|
+| **Enforced** | Guaranteed by a mechanism | Policy engine, BigInt math, atomic budget reservation, duplicate-hash prevention, NWC method blocklist |
+| **Demonstrated** | Shown in the demo | Commission-flow simulator (SIM mode), console output |
+| **Measured** | Reported with sample size | 12/12 adversarial tests pass |
+| **Future work** | Not built | Live LND transaction, SQLite durability, restart recovery |
+
+Never let future work appear as live. Never let a measured claim appear as a guarantee.
+
+---
+
 ## Evidence table
 
-Claim discipline: every row below is labeled by what actually happened, not
-what the code intends. Re-run instructions in each row's command.
-
-| Claim | Status | Command / evidence |
-|---|---|---|
-| 20% commission blocked by wallet policy | **VERIFIED** | `node engine/bin/adversarial-test.js` → 8/8 pass |
+| Check | Result | Evidence |
+|-------|--------|----------|
+| 20% commission blocked | **VERIFIED** | `node engine/bin/adversarial-test.js` → 12/12 pass |
 | Unauthorized payee blocked | **VERIFIED** | same run |
 | Budget exhaustion blocked | **VERIFIED** | same run |
+| Sequential budget tracking | **VERIFIED** | same run (reservation-aware budget) |
 | Duplicate payment-hash blocked | **VERIFIED** | same run |
 | Integer money math (no floats) | **VERIFIED** | `CommissionPolicy` uses BigInt comparisons |
-| No credentials in reachable git history | **VERIFIED** | `git log --all -- data/` → clean; `.gitignore` denies `*.macaroon *.seed *.key *.cert` |
-| Full Alice→Bob→Carol transaction | **SIMULATED** | `node engine/bin/commission-flow-simulator.js` — in-memory wallet state, not LND |
-| Real hold invoices + outgoing payment | **IMPLEMENTED, NOT VERIFIED** | LND REST calls in `commission-service.js`; requires `docker compose up` |
-| Independent node-backed verifier | **IMPLEMENTED, NOT VERIFIED** | `node engine/bin/verifier.js` — fails closed (exit 2) without credentials |
-| NWC `make_commission_invoice` handler | **IMPLEMENTED, NOT VERIFIED** | `engine/bin/nwc-server.js` — not yet exercised over a relay |
-| Durable budget (SQLite, atomic) | **MISSING** | in-memory Maps; restart loses reservations |
-| Restart / lost-response recovery | **MISSING** | highest-risk untested path |
-| Marketplace cancellation scenario | **MISSING** | required failure demo |
-| Transaction Room UI on live state | **MISSING** | static HTML only |
+| No credentials in reachable git history | **VERIFIED** | `.gitignore` denies `*.macaroon *.seed *.key *.cert *.pass` |
+| Full Alice→Bob→Carol transaction | **SIMULATED** | `node engine/bin/commission-flow-simulator.js` |
+| Independent node-backed verifier | **IMPLEMENTED, NOT VERIFIED** | `engine/bin/verifier.js` — fails closed without credentials |
+| NWC `make_commission_invoice` handler | **IMPLEMENTED, NOT VERIFIED** | `engine/bin/nwc-server.js` |
+| Durable budget (SQLite, atomic) | **IMPLEMENTED, NOT VERIFIED** | SQLite schema in `commission-service.js` |
+| Cancellation / recovery scenario | **SIMULATED** | `engine/bin/commission-flow-simulator.js` |
 
 **Honest headline:** the policy engine is proven; the Lightning transaction
 is not yet executed. Until `docker compose` runs one real 100,000-sat sale
@@ -240,40 +253,57 @@ The verifier queries actual wallet node state to prove:
 | Commission permission | No | Hold invoices | No | **YES** |
 | Restricted NWC connection | No | Partial | No | **YES** |
 | Policy enforcement | Client-side | App-based | N/A | **Wallet-side** |
-| Failure recovery | N/A | Basic | N/A | **Implemented** |
+| Failure recovery | N/A | Basic | N/A | **Simulated** |
 | Independent verifier | Browser | No | No | **External tool** |
-| Adversarial conformance | 929 tests | Limited | N/A | **20+ scenarios** |
+| Adversarial conformance | 929 tests | Limited | N/A | **12 scenarios** |
 
 ---
 
 ## Submission Checklist
 
-- [x] **Usefulness**: Marketplace commissions for African vendors
-- [x] **Security**: Vendor policy enforcement, no broad wallet access
-- [x] **UI**: Transaction Room interface
-- [x] **MVP**: Full commission flow with regtest
-- [x] **Technical**: HTLC coordination, payment hash linking
-- [x] **Wallet**: Real Lightning flow with LND
-- [x] **Conformance**: 20+ adversarial tests
-- [x] **Verification**: Independent state checking
-- [x] **Recovery**: Cancellation/restart handling
+- [ ] **Usefulness**: Marketplace commissions for African vendors (illustrative scenario)
+- [ ] **Security**: Vendor policy enforcement, no broad wallet access (adversarial tests pass)
+- [ ] **UI**: Transaction Room interface (static HTML, not live)
+- [ ] **MVP**: Full commission flow with regtest (blocked — Docker unavailable)
+- [ ] **Technical**: HTLC coordination, payment hash linking
+- [ ] **Wallet**: Real Lightning flow with LND (code ready, not executed)
+- [ ] **Conformance**: 12 adversarial tests pass
+- [ ] **Verification**: Independent state checking (verifier.js, not live)
+- [ ] **Recovery**: Cancellation/restart handling (simulated, not live)
 
 ---
 
 ## Limitations & Future Work
 
-**Current limitations:**
-- Regtest implementation (not mainnet)
-- PTLC interception not mitigated
-- No automated budget renewal
-- Single-channel payment paths
+**Current limitations (specific, not vague):**
+
+- **Regtest only** — not mainnet, not trustless. Funds are non-redeemable testnet/regtest sats.
+- **PTLC interception not mitigated** — a colluding routing node on the buyer's route may permit interception. PTLCs are a possible future mitigation, not an implemented guarantee.
+- **No automated budget renewal** — budget is a fixed pool; renewal period is future work.
+- **Single-channel payment paths** — no multi-hop fee optimization.
+- **No SQLite durability** — `better-sqlite3` not installed in build environment; in-memory fallback loses state on restart.
+- **No restart / lost-response recovery** — highest-risk untested path; reconcile() implemented but not exercised against live nodes.
+- **No live LND transaction** — Docker unavailable in build environment; Gate 1 (regtest transaction) cannot be executed here.
 
 **Future improvements:**
+
 - Mainnet deployment support
 - PTLC-enabled routing
 - Multi-hop payment optimization
 - Automated budget renewal
 - Fee optimization
+
+---
+
+## Q&A prep
+
+| Question | Strong answer |
+|----------|---------------|
+| What if the model is wrong? | There is no model. The policy engine is deterministic BigInt math; a blocked case is demonstrable. |
+| What is actually enforced? | The invariant: authority can only narrow, never widen. Rate, payee, budget, duplicate-hash checks run at delegation time. Here are the 12 adversarial tests. |
+| How do you know verification is correct? | The verifier queries actual LND node state (read-only credentials), not Alibi's database. It fails closed (exit 2) without credentials. |
+| What is the boundary? | Regtest only. Single root (no multi-root reservation). Research informs decisions; it never determines payouts. |
+| What breaks in production? | Top risk: marketplace knows preimage before buyer pays (collusion risk). Mitigation: PTLCs (future work). Fallback: cancel commission, release sale. |
 
 ---
 

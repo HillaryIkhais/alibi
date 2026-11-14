@@ -89,6 +89,21 @@ function openDb() {
         rate_ppm INTEGER NOT NULL DEFAULT 5000,
         updated_at INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        actor TEXT NOT NULL,
+        authority_ref TEXT,
+        input_hash TEXT,
+        decision TEXT NOT NULL,
+        reason_code TEXT,
+        output_hash TEXT,
+        timestamp INTEGER NOT NULL,
+        version TEXT NOT NULL,
+        parent_action TEXT,
+        rail_receipt TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_audit_hash ON audit(input_hash);
+      CREATE INDEX IF NOT EXISTS idx_audit_time ON audit(timestamp);
     `);
     // Seed policy if absent
     const row = db.prepare('SELECT id FROM policy WHERE id = 1').get();
@@ -389,6 +404,74 @@ class LndClient {
   }
 }
 
+// ── Action Contracts (Agent-Native Architecture) ──────────────────────────
+
+/**
+ * Shared action contract: every action (UI, agent, SDK, test) goes through
+ * the same authorize/execute/audit schema. Authorization is separate from
+ * execution; the decision is data (ALLOW | BLOCK | APPROVAL_REQUIRED).
+ */
+class ActionContract {
+  constructor({ name, input, authorize, execute, audit, reversible, requiresApproval }) {
+    this.name = name;
+    this.input = input;
+    this.authorize = authorize;
+    this.execute = execute;
+    this.audit = audit;
+    this.reversible = reversible ?? false;
+    this.requiresApproval = requiresApproval ?? false;
+  }
+
+  async call(actor, input, state, version = '1.0.0') {
+    const inputHash = crypto.createHash('sha256').update(JSON.stringify(input)).digest('hex');
+
+    // Step 1: Authorize (deterministic, not prompt-based)
+    const decision = await this.authorize(actor, input, state);
+    const decisionData = typeof decision === 'string' ? { status: decision } : decision;
+
+    // Step 2: Execute only if ALLOWED
+    let result;
+    if (decisionData.status === 'ALLOW') {
+      result = await this.execute(input, state);
+    } else if (decisionData.status === 'APPROVAL_REQUIRED') {
+      return {
+        status: 'APPROVAL_REQUIRED',
+        reason: decisionData.reason || 'Human approval required',
+        inputHash,
+        contract: this.name,
+      };
+    } else {
+      return {
+        status: 'BLOCKED',
+        reason: decisionData.reason || 'Action not authorized',
+        inputHash,
+        contract: this.name,
+      };
+    }
+
+    // Step 3: Audit (part of the contract, not a side effect)
+    const outputHash = crypto.createHash('sha256').update(JSON.stringify(result)).digest('hex');
+    const auditRecord = {
+      actor,
+      authority_ref: state?.authorityRef || null,
+      input_hash: inputHash,
+      decision: decisionData.status,
+      reason_code: decisionData.reason || null,
+      output_hash: outputHash,
+      timestamp: Math.floor(Date.now() / 1000),
+      version,
+      parent_action: state?.parentAction || null,
+      rail_receipt: result?.railReceipt || null,
+    };
+
+    if (this.audit) {
+      this.audit(auditRecord);
+    }
+
+    return { status: decisionData.status, result, inputHash, outputHash, audit: auditRecord };
+  }
+}
+
 // ── Service ───────────────────────────────────────────────────────────────
 
 class CommissionService {
@@ -399,7 +482,37 @@ class CommissionService {
     this.tlsCert = process.env.HARBOR_LND_TLS_CERT || null;
     this.lnd = (this.restUrl && this.macaroon) ? new LndClient(this.restUrl, this.macaroon, this.tlsCert) : null;
     this.mode = this.lnd ? 'REAL' : 'SIM';
+    this.auditLog = []; // in-memory fallback when SQLite unavailable
     console.log(`[alibi] mode=${this.mode} policy=5% max_budget=100,000sats payee=${this.policy.allowedPayee ?? '(none set)'}`);
+  }
+
+  // ── Provenance / audit ──────────────────────────────────────────────
+
+  recordAudit(actor, authorityRef, inputHash, decision, reasonCode, outputHash, parentAction, railReceipt) {
+    const record = {
+      actor,
+      authority_ref: authorityRef || null,
+      input_hash: inputHash,
+      decision,
+      reason_code: reasonCode || null,
+      output_hash: outputHash || null,
+      timestamp: Math.floor(Date.now() / 1000),
+      version: '1.0.0',
+      parent_action: parentAction || null,
+      rail_receipt: railReceipt || null,
+    };
+    if (db) {
+      db.prepare(
+        'INSERT INTO audit (actor, authority_ref, input_hash, decision, reason_code, output_hash, timestamp, version, parent_action, rail_receipt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(
+        record.actor, record.authority_ref, record.input_hash, record.decision,
+        record.reason_code, record.output_hash, record.timestamp, record.version,
+        record.parent_action, record.rail_receipt
+      );
+    } else {
+      this.auditLog.push(record);
+    }
+    return record;
   }
 
   // ── NWC make_commission_invoice handler ──────────────────────────────
@@ -470,6 +583,37 @@ class CommissionService {
     };
   }
 
+  // ── Audit-friendly wrapper for make_commission_invoice ──
+  async recordCommissionInvoiceAudit({ amount, payment_hash, commission_invoice, expiry, marketplacePubkey }) {
+    const inputHash = crypto.createHash('sha256').update(
+      JSON.stringify({ amount, payment_hash, commission_invoice, expiry, marketplacePubkey })
+    ).digest('hex');
+    const outputHash = crypto.createHash('sha256').update(
+      JSON.stringify({ payment_hash, amount_msat: String(amount) })
+    ).digest('hex');
+
+    const validation = this.policy.validateCommission({
+      commissionMsat: BigInt(amount),
+      saleMsat: (BigInt(amount) * 1_000_000n) / BigInt(this.policy.maxRatePPM),
+      marketplacePubkey: this.policy.allowedPayee || '',
+      paymentHash: payment_hash,
+      commissionPayeePubkey: this.policy.allowedPayee || '',
+    });
+
+    const decision = validation.valid ? 'ALLOW' : 'BLOCKED';
+    this.recordAudit(
+      marketplacePubkey || 'unknown',
+      this.policy.allowedPayee || null,
+      inputHash,
+      decision,
+      validation.valid ? null : validation.errors[0]?.code,
+      outputHash,
+      null,
+      null
+    );
+    return { decision, validation };
+  }
+
   // ── CLI flow commands ──────────────────────────────────────────────────
 
   async setupSale({ saleAmtSats, commissionPct, commissionInvoice, paymentHash }) {
@@ -522,6 +666,38 @@ class CommissionService {
     };
   }
 
+  // ── Audit wrapper for setupSale ──
+  async recordSetupSaleAudit({ saleAmtSats, commissionPct, commissionInvoice, paymentHash, marketplacePubkey }) {
+    const saleMsat = BigInt(saleAmtSats) * 1000n;
+    const commissionMsat = (saleMsat * BigInt(commissionPct)) / 100n;
+    const inputHash = crypto.createHash('sha256').update(
+      JSON.stringify({ saleAmtSats, commissionPct, commissionInvoice, paymentHash, marketplacePubkey })
+    ).digest('hex');
+    const outputHash = crypto.createHash('sha256').update(
+      JSON.stringify({ paymentHash, saleAmtSats, commissionAmtSats: Number(commissionMsat / 1000n) })
+    ).digest('hex');
+
+    const validation = this.policy.validateCommission({
+      commissionMsat, saleMsat,
+      marketplacePubkey: this.policy.allowedPayee || '',
+      paymentHash,
+      commissionPayeePubkey: this.policy.allowedPayee || '',
+    });
+
+    const decision = validation.valid ? 'ALLOW' : 'BLOCKED';
+    this.recordAudit(
+      marketplacePubkey || 'unknown',
+      this.policy.allowedPayee || null,
+      inputHash,
+      decision,
+      validation.valid ? null : validation.errors[0]?.code,
+      outputHash,
+      null,
+      null
+    );
+    return { decision, validation };
+  }
+
   async payCommission(paymentRequest) {
     if (!this.lnd) return { success: false, reason: 'REAL mode required; no LND credentials' };
     try {
@@ -545,11 +721,46 @@ class CommissionService {
         db.prepare('UPDATE sales SET sale_state = ?, settled_at = ? WHERE payment_hash = ?').run('settled', Math.floor(Date.now() / 1000), paymentHash);
         db.prepare('UPDATE commissions SET commission_state = ?, paid_at = ? WHERE payment_hash = ?').run('settled', Math.floor(Date.now() / 1000), paymentHash);
       }
-      this.policy.commitSpent(paymentHash, BigInt(0)); // commission amount tracked by reservations
+      this.policy.commitSpent(paymentHash, BigInt(0));
       return { success: true, verified: true };
     } catch (e) {
       return { success: false, reason: e.message };
     }
+  }
+
+  async recordSettleSaleAudit({ paymentHash, preimageHex, marketplacePubkey }) {
+    const inputHash = crypto.createHash('sha256').update(
+      JSON.stringify({ paymentHash, preimageHex })
+    ).digest('hex');
+    const preimageBuf = Buffer.from(preimageHex, 'hex');
+    const calcHash = crypto.createHash('sha256').update(preimageBuf).digest('hex');
+    if (calcHash !== paymentHash) {
+      this.recordAudit(
+        marketplacePubkey || 'unknown',
+        this.policy.allowedPayee || null,
+        inputHash,
+        'BLOCKED',
+        'PREIMAGE_HASH_MISMATCH',
+        null,
+        null,
+        null
+      );
+      return { success: false, reason: 'preimage hash mismatch' };
+    }
+    const outputHash = crypto.createHash('sha256').update(
+      JSON.stringify({ paymentHash, settled: true })
+    ).digest('hex');
+    this.recordAudit(
+      marketplacePubkey || 'unknown',
+      this.policy.allowedPayee || null,
+      inputHash,
+      'ALLOW',
+      null,
+      outputHash,
+      null,
+      null
+    );
+    return { success: true, verified: true };
   }
 
   async cancelSale({ paymentHash }) {
@@ -567,7 +778,25 @@ class CommissionService {
     }
   }
 
-  async reconcile({ paymentHash }) {
+  async recordCancelSaleAudit({ paymentHash, marketplacePubkey }) {
+    const inputHash = crypto.createHash('sha256').update(JSON.stringify({ paymentHash })).digest('hex');
+    const outputHash = crypto.createHash('sha256').update(
+      JSON.stringify({ paymentHash, canceled: true })
+    ).digest('hex');
+    this.recordAudit(
+      marketplacePubkey || 'unknown',
+      this.policy.allowedPayee || null,
+      inputHash,
+      'ALLOW',
+      null,
+      outputHash,
+      null,
+      null
+    );
+    return { success: true };
+  }
+
+  async payCommission(paymentRequest) {
     if (!this.lnd) return { success: false, reason: 'REAL mode required' };
     // Authoritative LND state, not application DB
     const invoice = await this.lnd.lookupInvoice(paymentHash);
