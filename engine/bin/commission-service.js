@@ -540,7 +540,7 @@ class CommissionService {
   // a sale hold invoice for the buyer to pay. The commission is settled
   // separately (wallet pays commission invoice) using the shared preimage.
   //
-  async handleMakeCommissionInvoice({ amount, payment_hash, commission_invoice, expiry }) {
+  async handleMakeCommissionInvoice({ amount, payment_hash, commission_invoice, expiry, marketplace_pubkey }) {
     if (!amount || !payment_hash || !commission_invoice) {
       return { result: 'error', error: { code: 'INVALID_PARAMS', message: 'amount, payment_hash, commission_invoice required' } };
     }
@@ -587,7 +587,7 @@ class CommissionService {
     // Marketplace authorization: validate the marketplace pubkey from the request
     // against the allowed payee. In a full NWC implementation this would come
     // from a signed NIP-47 event; here we record the check for the audit log.
-    const reqMarketPubkey = params?.marketplace_pubkey || this.policy.allowedPayee || '';
+    const reqMarketPubkey = marketplace_pubkey || this.policy.allowedPayee || '';
     if (this.policy.allowedPayee && reqMarketPubkey !== this.policy.allowedPayee) {
       return { result: 'error', error: { code: 'UNAUTHORIZED_MARKETPLACE', message: 'Marketplace pubkey not in allowlist' } };
     }
