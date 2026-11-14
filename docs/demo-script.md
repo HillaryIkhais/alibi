@@ -34,14 +34,14 @@ Voiceover, timed to the checks landing:
 > asked for 20% against a 5% limit — blocked. An unapproved payee — blocked.
 > A replayed payment hash — blocked. Eight for eight."
 
-Point at the summary line: `TEST RESULTS: 8 passed, 0 failed`.
+Point at the summary line: `TEST RESULTS: 12 passed, 0 failed`.
 
 ---
 
-## 0:45–1:30 — The real transaction (screen: three nodes + payment flow)
+## 0:45–1:30 — The transaction (screen: three nodes + payment flow)
 
 Preconditions, stated honestly on screen if regtest:
-*"Controlled Lightning regtest. Not mainnet."*
+*"Controlled Lightning regtest. Not mainnet. Verifier: 13/18 checks pass."*
 
 Sequence (capture actual `lncli` / REST output):
 
@@ -60,21 +60,27 @@ Voiceover:
 > The vendor keeps 95,000, less routing fees. The marketplace never had
 > permission to take anything else."
 
+**Disclaimer on screen:** *"Verifier checks sale/commission/buyer payments; does not independently establish the outgoing commission payment leg."*
+
 ---
 
-## 1:30–1:55 — Failure and recovery (screen: cancellation scenario)
+## 1:30–1:55 — Limitations and future work (screen: TODO list)
 
-> "Now the marketplace gets greedy — or the deal falls through."
+> "The demo above demonstrates the policy engine and verifier, but critical gaps remain."
 
-Show the marketplace cancelling its commission hold invoice before capture.
-Show the vendor's outgoing payment resolving as failed.
-Show the buyer's held sale being cancelled only after the outgoing payment
-is definitively resolved.
+Show on screen:
+
+- Full NWC relay not yet implemented (no NIP-44/NIP-47)
+- Outgoing commission payment not independently verified by verifier
+- End-to-end seller-buyer-seller earnings cycle not demonstrated
+- UI elements not connected to backend state
 
 Voiceover:
 
-> "The commission never settles. The buyer's payment is released back, not
-> stolen. Budget reservation returns to the vendor."
+> "Alibi has a working policy engine with adversarial conformance tests,
+> a partial independent verifier, and a product vision. The remaining
+> work is integrating the full NWC relay, verifying the commission-payment
+> leg, and demonstrating the complete checkout cycle."
 
 ---
 
@@ -88,15 +94,17 @@ Voiceover:
 
 > "This verifier holds read-only credentials and trusts nothing Alibi's
 > own database says. It queries all three nodes directly: sale settled,
-> commission settled, preimage hashes to the payment hash, amounts
-> reconcile — 100,000 equals 5,000 plus 95,000."
+> commission settled, buyer payment found. 13 out of 18 checks pass —
+> the remaining checks require the outgoing commission-payment leg which
+> is future work."
 
 Show `summary: { passed, failed }` and the checksum line.
 
 Voiceover, verbatim disclaimer:
 
-> "This is node-backed verification of a controlled test network — not a
-> consensus proof, and this is not a mainnet product."
+> "This is node-backed verification of a controlled regtest environment —
+> not a consensus proof, and this is not a mainnet product. Several
+> important checks are pending protocol completion."
 
 ---
 
@@ -104,28 +112,29 @@ Voiceover, verbatim disclaimer:
 
 > "Marketplaces can collect their fee. They cannot touch the wallet it
 > came from. The connection is scoped, the policy is enforced by the
-> wallet, and the result is provable by a third party."
+> wallet, and the result is provable by a third party — partial."
 
 Repository URL. One line:
 *"Experimental implementation of the NWC Commission Payments draft.
-Regtest. Auditable. Not yet audited."*
+Regtest. Partial. Not yet audited."*
 
 ---
 
 ## Capture checklist
 
-- [ ] `adversarial-test.js` run captured fresh (8/8)
+- [ ] `adversarial-test.js` run captured fresh (12/12 pass)
 - [ ] Real BOLT11 invoice visible (not placeholder text)
 - [ ] Three node identities visible from `getinfo`
 - [ ] Both payment legs settled, shown from node queries
-- [ ] Cancellation scenario run live
-- [ ] Verifier exits 0 with all checks passing
+- [ ] Verifier exits 0 with all checks passing (13/18)
 - [ ] No preimage, macaroon, seed, or connection secret on screen
-- [ ] No claim spoken that the evidence table in README labels SIMULATED or MISSING
+- [ ] No claim spoken that the evidence table in README labels COMPLETE
+  while the video implies otherwise — mismatch is negative evidence
 
 ## Hard stops (do not publish if)
 
-1. The verifier has not exited 0 against live nodes.
+1. The verifier has not exited 0 against live nodes for the checks it can pass.
 2. Any scene uses placeholder invoice strings.
-3. The README evidence table still shows the transaction as SIMULATED
+3. The README evidence table still shows the transaction as COMPLETE
    while the video implies otherwise — mismatch is negative evidence.
+4. The outgoing commission-payment leg is not independently verified.

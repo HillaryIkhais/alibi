@@ -8,54 +8,55 @@ Score 0–2 per dimension. 2 = a skeptical judge would agree without explanation
 | # | Dimension | Score | Justification |
 |---|---|---|---|
 | 1 | Silent failure | 2 | Marketplace silently widening commission authority — second-order, silent, expensive |
-| 2 | Insight | 2 | NWC Commission Payments draft realized as vendor-controlled checkout; first implementation |
+| 2 | Insight | 1 | NWC Commission Payments draft partially realized; vendor-side `make_commission_invoice` partially implemented |
 | 3 | Invariant | 2 | "Authority can only narrow, never widen" — one sentence, testable |
-| 4 | Architecture | 2 | Shared action contracts, deterministic BigInt policy, audit provenance, NWC method blocklist |
-| 5 | Completeness | 2 | Full loop including failure + recovery — executed live on regtest; checkout + verification both demonstrated |
-| 6 | Verification | 2 | Independent oracle (verifier.js) queries actual LND nodes; 18/18 pass |
-| 7 | Evidence | 2 | Public state + digest + verify-yourself commands; 18/18 verifier checks |
-| 8 | Sponsor fit | 2 | NWC API is load-bearing — remove it and Alibi loses core value (L3 integration) |
-| 9 | Narrative | 2 | Problem → failure → proof → live link; honest SIM/IMPLEMENTED/VERIFIED labels |
-| 10 | Honesty | 2 | Specific limitations documented; no overclaiming; regtest labeled honestly |
+| 4 | Architecture | 1 | Shared action contracts, deterministic BigInt policy, but NWC protocol not implemented; method blocklist inside HTTP server is not proof of NWC permission boundary |
+| 5 | Completeness | 1 | Core flow incomplete: no verified seller→marketplace→buyer→seller earnings cycle; no independent commission-payment verification |
+| 6 | Verification | 1 | Verifier queries node state for sale/commission/buyer payments but does NOT independently establish Alice's outgoing commission payment and actual routing fee |
+| 7 | Evidence | 1 | Public state + digest available but verifier does not check the critical outgoing commission leg; adversarial suite tests policy logic, not production NWC request path |
+| 8 | Sponsor fit | 1 | NWC API surface partially present (method allowlist/blocklist) but no signed Nostr/NIP-47 implementation; without it Alibi loses core value as a vendor-controlled checkout |
+| 9 | Narrative | 1 | Problem → failure → proof pipeline not yet closed; product direction is clear but implementation gaps remain |
+| 10 | Honesty | 2 | Specific limitations documented; no overclaiming; regtest labeled honestly; LEASH lesson applied |
 
-**Total: 20/20 — competitive to win.**
+**Total: 15/20**
 
-## What changed from infrastructure-first to checkout product
+## What changed from 20/20
 
-| Dimension | Before (NWC reference) | After (Alibi Checkout) | Evidence |
+| Dimension | Previous | Current | Reason |
 |---|---|---|---|
-| Silent failure | 1 | 2 | Second-order failure clearly articulated as marketplace commission override |
-| Insight | 1 | 2 | Product: checkout experience, not protocol demo; seller approval + buyer checkout + seller receipt |
-| Invariant | 1 | 2 | Same invariant, now experienced as three live checkout steps |
-| Architecture | 1 | 2 | Engine underneath + product UX; NWC method blocklist serves checkout |
-| Completeness | 1 | 2 | Full loop: checkout + failure/recovery + independent verification on live regtest |
-| Verification | 1 | 2 | Verifier: 18/18 against live LND nodes; fails closed without credentials |
-| Evidence | 0 | 2 | Live verifier output + SHA-256 checksum + video capture from running system |
-| Sponsor fit | 1 | 2 | NWC as L3 load-bearing; checkout is the user-facing expression |
-| Narrative | 1 | 2 | Problem → failure → proof → live link; honest labels throughout |
-| Honesty | 1 | 2 | Regtest labeled; no overclaiming; limitations explicitly stated |
+| Silent failure | 2 | 2 | Still accurately articulated |
+| Insight | 2 | 1 | Protocol not fully realized as shipped product |
+| Architecture | 2 | 1 | NWC not implemented as specified; HTTP method blocklist ≠ NWC permission boundary |
+| Completeness | 2 | 1 | Core checkout cycle not verified end-to-end |
+| Verification | 2 | 1 | Verifier incomplete: missing outgoing commission leg |
+| Evidence | 2 | 1 | Verifier does not check critical payment leg |
+| Sponsor fit | 2 | 1 | No full NWC relay; value depends on protocol completion |
+| Narrative | 2 | 1 | Gaps between documented product and implemented code |
+| Honesty | 2 | 2 | Still accurately stated |
 
 ## What changed
 
 | Dimension | Before | After | Evidence |
 |---|---|---|---|
 | Silent failure | 1 | 2 | Second-order failure clearly articulated |
-| Insight | 1 | 2 | First implementation of vendor-controlled NWC checkout |
-| Architecture | 1 | 2 | Action contracts + provenance + revocation + UI |
-| Completeness | 1 | 2 | Full loop incl. failure/recovery on live regtest |
-| Verification | 1 | 2 | Independent verifier: 18/18 against live LND nodes |
-| Evidence | 0 | 2 | Live verifier output + SHA-256 checksum |
-| Sponsor fit | 1 | 2 | NWC API is load-bearing — Alibi's value lives at L3 |
-| Narrative | 1 | 2 | Problem → failure → proof → live link; honest labels |
+| Insight | 1 | 2 | First implementation of NWC Commission Payments draft |
+| Architecture | 1 | 1 | Action contracts + provenance; NWC protocol gap identified |
+| Completeness | 1 | 1 | Full loop not yet verified on production path |
+| Verification | 1 | 1 | Verifier queries nodes but misses outgoing commission leg |
+| Evidence | 0 | 1 | Live verifier output + checksum; but verifier incomplete |
+| Sponsor fit | 1 | 1 | NWC API surface; relay not implemented |
+| Narrative | 1 | 1 | Problem → failure → proof not fully closed |
 | Honesty | 1 | 2 | Specific limitations documented; no overclaiming |
 
 ## Cut list (still applies)
 
-- Never cut: failure injection, deterministic check, evidence artifact, live demo path, known-limitations section
+- Never cut: failure injection, deterministic check, evidence artifact, known-limitations section
 - Cut first: extra integrations, settings/profiles/onboarding, secondary roles, visual polish, multi-tenant architecture
 
-## Next 3 actions
+## Next actions
 
-1. **Record demo video** — follow `docs/demo-script.md` (2–3 minutes)
-2. **Test on fresh clone** — verify `docker compose` + setup + verifier works from clean state
-3. **Prepare Devpost submission** — README, video, evidence bundle, postmortem
+1. **Fix the NWC protocol implementation** — integrate with Nostr relays, NIP-44 encryption, signed-event verification
+2. **Complete the payment lifecycle** — verify seller→marketplace→buyer→seller earnings cycle end-to-end on live regtest
+3. **Update the verifier** — independently establish Alice's outgoing commission payment and routing fee
+4. **Connect the UI to the backend** — revoke button, payment stages, live state
+5. **Re-evaluate the Drey scorecard** — aim for 18-20/20 after fixes
