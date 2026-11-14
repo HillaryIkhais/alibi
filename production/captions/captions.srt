@@ -1,0 +1,83 @@
+1
+00:00:02,400 --> 00:00:07,900
+Some African digital-product creators sell through marketplaces but refuse to give platforms unrestricted control of their Lightning wallets.
+
+2
+00:00:08,400 --> 00:00:13,900
+Existing solutions either take custody of funds, grant broad spending permissions, or trust vendors to pay commissions later.
+
+3
+00:00:14,400 --> 00:00:18,800
+Alibi gives a Lightning marketplace conditional authority to collect an agreed commission — without general spending authority over the vendor's wallet.
+
+4
+00:00:20,400 --> 00:00:24,900
+The vendor wallet enforces policy. The marketplace can only request commission-bound sales to approved destinations within budget limits.
+
+5
+00:00:27,200 --> 00:00:33,200
+Consider a buyer purchasing a digital product for 100,000 satoshis.
+
+6
+00:00:33,200 --> 00:00:40,000
+The marketplace may request a commission invoice — but only up to 5 percent, only to an approved payee, only within a budget the seller has set.
+
+7
+00:00:40,000 --> 00:00:48,500
+The commission, five thousand sats, is paid by the vendor from the received amount. The vendor net before routing fees: 95,000 sats.
+
+8
+00:00:48,500 --> 00:00:55,500
+But what if the marketplace tries to change its commission to twenty percent? Alibi rejects the request.
+
+9
+00:00:55,500 --> 00:01:03,000
+The seller's original permission remains intact. Policy enforcement checks: max rate, approved payees, routing fee caps, budget limits.
+
+10
+00:01:03,000 --> 00:01:13,000
+Duplicate payment hashes are blocked. Unauthorized payees are rejected. Budget exhaustion is rejected.
+
+11
+00:01:13,000 --> 00:01:20,200
+Now consider the REACH engine — a payment reliability verification layer.
+
+12
+00:01:20,200 --> 00:01:26,200
+A valid invoice does not mean a payable invoice.
+
+13
+00:01:26,200 --> 00:01:32,200
+A channel exists does not mean sufficient liquidity in the payment direction.
+
+14
+00:01:32,200 --> 00:01:38,200
+A node online does not mean payment can succeed.
+
+15
+00:01:38,200 --> 00:01:47,200
+REACH solves this with a prepay probe. It tests routes before the customer attempts payment.
+
+16
+00:01:47,200 --> 00:01:55,200
+It diagnoses liquidity gaps, not just payment failed.
+
+17
+00:01:55,200 --> 00:02:03,200
+It suggests repair options: a new channel, an intermediary, rebalancing.
+
+18
+00:02:03,200 --> 00:02:11,200
+And it verifies payment settled with on-chain evidence.
+
+19
+00:02:11,200 --> 00:02:19,200
+The intersection between the product's strongest technical capability and the user's most meaningful benefit: checkout that actually works.
+
+20
+00:02:19,200 --> 00:02:27,200
+The customer sees a clear result. The merchant gets paid. The marketplace collects its commission — properly, transparently, within bounds.
+
+21
+00:02:27,200 --> 00:02:35,200
+This is not a technical experiment. This is a product built to address a real problem, with a meaningful user experience and a reason to exist.

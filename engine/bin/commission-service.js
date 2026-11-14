@@ -351,10 +351,12 @@ class LndClient {
   get(path) { return this.request('GET', path); }
   post(path, body) { return this.request('POST', path, body); }
 
-  async addHoldInvoice(valueMsat, paymentHash, description, expirySeconds = 3600) {
+  async addHoldInvoice(valueMsat, paymentHashHex, description, expirySeconds = 3600) {
+    // LND REST API expects payment_hash as base64, not hex
+    const paymentHashBuf = Buffer.from(paymentHashHex, 'hex');
     const r = await this.post('/v2/invoices/hodl', {
       value_msat: String(valueMsat),
-      payment_hash: paymentHash,
+      payment_hash: paymentHashBuf.toString('base64'),
       memo: description,
       expiry: String(expirySeconds),
     });
@@ -380,13 +382,17 @@ class LndClient {
   }
 
   async settleInvoice(paymentHash, preimageHex) {
-    const r = await this.post('/v2/invoices/settle', { preimage: preimageHex });
+    // LND REST API expects preimage as base64
+    const preimageBuf = Buffer.from(preimageHex, 'hex');
+    const r = await this.post('/v2/invoices/settle', { preimage: preimageBuf.toString('base64') });
     if (r.status >= 400) throw new Error(`SettleInvoice ${r.status}`);
     return r.body;
   }
 
-  async cancelInvoice(paymentHash) {
-    const r = await this.post('/v2/invoices/cancel', { payment_hash: paymentHash });
+  async cancelInvoice(paymentHashHex) {
+    // LND REST API expects payment_hash as base64
+    const paymentHashBuf = Buffer.from(paymentHashHex, 'hex');
+    const r = await this.post('/v2/invoices/cancel', { payment_hash: paymentHashBuf.toString('base64') });
     if (r.status >= 400) throw new Error(`CancelInvoice ${r.status}`);
     return r.body;
   }
@@ -404,7 +410,8 @@ class LndClient {
   }
 
   async decodePayReq(paymentRequest) {
-    const r = await this.post('/v1/payreq', { pay_req: paymentRequest });
+    // LND: GET /v1/payreq/{pay_req}
+    const r = await this.get(`/v1/payreq/${paymentRequest}`);
     if (r.status >= 400) throw new Error(`DecodePayReq ${r.status}: ${JSON.stringify(r.body)}`);
     return r.body;
   }
