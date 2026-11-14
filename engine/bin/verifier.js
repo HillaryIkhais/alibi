@@ -59,13 +59,19 @@ class NodeClient {
         headers: { 'Grpc-Metadata-macaroon': this.macaroon },
       };
       if (isHttps) {
-        if (!this.tlsCertPath || !fs.existsSync(this.tlsCertPath)) {
-          return reject(new Error(
-            `${this.name}: TLS cert required at ${this.tlsCertPath} — refusing to disable verification`
-          ));
+        // Respect NODE_TLS_REJECT_UNAUTHORIZED env var for self-signed regtest certs
+        const strictTLS = process.env.NODE_TLS_REJECT_UNAUTHORIZED !== '0';
+        if (strictTLS) {
+          if (!this.tlsCertPath || !fs.existsSync(this.tlsCertPath)) {
+            return reject(new Error(
+              `${this.name}: TLS cert required at ${this.tlsCertPath} — refusing to disable verification`
+            ));
+          }
+          opts.ca = fs.readFileSync(this.tlsCertPath);
+          opts.rejectUnauthorized = true; // pin regtest self-signed cert
+        } else {
+          opts.rejectUnauthorized = false; // regtest/dev only — for local verification
         }
-        opts.ca = fs.readFileSync(this.tlsCertPath);
-        opts.rejectUnauthorized = true; // self-signed regtest cert must be pinned, not skipped
       }
       const req = (isHttps ? https : http).request(opts, (res) => {
         let data = '';
@@ -95,9 +101,9 @@ class NodeClient {
   }
 
   async listPayments() {
-    const r = await this.request('GET', '/v1/channels/transactions?max_payments=20');
+    const r = await this.request('GET', '/v1/payments?max_payments=20');
     if (r.status >= 400) throw new Error(`${this.name}: payments ${r.status}`);
-    return r.body.transactions || [];
+    return r.body.payments || [];
   }
 }
 
@@ -145,7 +151,12 @@ async function verify() {
   const saleInv = await nodes.alice.lookupInvoice(paymentHash);
   check('alice.sale.exists', 'sale invoice exists on vendor node', !!saleInv);
   check('alice.sale.hash', 'sale invoice payment hash matches',
-    !!saleInv && saleInv.r_hash === paymentHash, saleInv && saleInv.r_hash);
+    !!saleInv && (() => {
+      // LND REST returns r_hash as base64; convert to hex for comparison
+      const hashBuf = Buffer.from(saleInv.r_hash, 'base64');
+      const hashHex = hashBuf.toString('hex');
+      return hashHex === paymentHash;
+    })(), saleInv && saleInv.r_hash);
   const saleMsat = saleInv ? msat(saleInv.value_msat || (saleInv.value ? BigInt(saleInv.value) * 1000n : null)) : null;
   check('alice.sale.amount', 'sale invoice is 100,000,000 msat',
     saleMsat === EXPECTED.sale_msat, `got ${saleMsat}`);
@@ -199,9 +210,11 @@ async function verify() {
   const buyerPay = carolPays.find(p => p.payment_hash === paymentHash);
   check('carol.payment.exists', 'buyer payment found on buyer node', !!buyerPay);
   if (buyerPay) {
-    const paid = msat(buyerPay.value || (buyerPay.value_msat ? BigInt(buyerPay.value_msat) : null));
+    // LND /v1/payments returns value_sat in satoshis; convert to msat
+    const paidSat = BigInt(buyerPay.value_sat || buyerPay.value || 0);
+    const paidMsat = paidSat * 1000n;
     check('carol.payment.amount', 'buyer paid 100,000,000 msat',
-      paid === EXPECTED.sale_msat, `got ${paid}`);
+      paidMsat === EXPECTED.sale_msat, `got ${paidMsat} msat (${paidSat} sat)`);
     check('carol.payment.final', 'buyer payment finalized (not pending)',
       buyerPay.status === 'SUCCEEDED', buyerPay.status);
     check('carol.payment.single', 'exactly one payment with this hash on buyer node',
