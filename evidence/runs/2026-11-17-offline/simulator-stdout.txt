@@ -1,0 +1,55 @@
+[alibi] SQLite unavailable (Cannot find module 'better-sqlite3'
+Require stack:
+- /Users/ikhaisoshuare/Downloads/DAKAR/DAKAR/engine/bin/commission-service.js
+- /Users/ikhaisoshuare/Downloads/DAKAR/DAKAR/engine/bin/commission-flow-simulator.js); falling back to in-memory state
+[alibi] mode=SIM policy=5% max_budget=100,000sats payee=(none set)
+Alibi Commission Service — mode: SIM
+Commands: demo | setup-sale <amt> <pct> <commission_bolt11> [hash] | look-up-invoice <hash> | pay-commission <bolt11> | settle-sale <hash> <preimage_hex> | cancel-sale <hash> | reconcile <hash> | budget
+[alibi] mode=SIM policy=5% max_budget=100,000sats payee=(none set)
+╔══════════════════════════════════════════════════════════╗
+║     ALIBI COMMISSION FLOW SIMULATOR (Alice-Bob-Carol)   ║
+║     mode=SIM                                          ║
+╚══════════════════════════════════════════════════════════╝
+
+=== SETUP ===
+Carol: 03cc8aa6ac238af1ea51...
+Alice: 03042a9655ba75aef3db...
+Bob:   0225a72a6bee672de3e8...
+Hash:  7a62cca60a64fe418018eee8c2bd2a2cb02c9043dd9fe70e7291dcd77b1c711c
+STEP 1: Carol pays 100000 sats sale — ACCEPTED_HOLD
+STEP 2: Alice pays 5000 sats commission to Bob — rate 5%
+STEP 3: Bob captures commission; Alice releases sale via preimage
+
+=== FINAL STATE VERIFICATION ===
+Alice: 2095000 sats
+Bob:   1505000 sats
+Carol: 900000 sats
+
+=== AMOUNT VERIFICATION ===
+Buyer pays: 100,000 sats (sale amount)
+Commission: 5,000 sats (5%)
+Vendor net BEFORE fees: 95,000 sats
+
+=== ADVERSARIAL RE-CHECKS ===
+20% commission: BLOCKED ✓
+Unauthorized payee: BLOCKED ✓
+Duplicate hash: BLOCKED ✓
+
+=== CANCELLATION / REPAIR SCENARIO ===
+Marketplace cancels commission hold invoice before capture.
+Outgoing commission payment: RESOLVED_FAILED
+Buyer held sale: NOT SETTLED (awaiting outgoing resolution)
+Vendor releases buyer sale: AFTER outgoing payment confirmed failed
+Budget reservation released: remaining=95000000 msat
+Duplicate commission payment: NONE
+Sale state: CANCELED (safe, no funds moved)
+Cancellation scenario: All invariants hold:
+  ✓ Buyer payment not settled
+  ✓ No commission collected
+  ✓ Budget reservation released
+  ✓ No duplicate commission payment
+  ✓ Sale canceled safely
+
+╔══════════════════════════════════════════════════════════╗
+║           FLOW COMPLETE                                  ║
+╚══════════════════════════════════════════════════════════╝

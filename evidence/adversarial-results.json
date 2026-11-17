@@ -1,0 +1,65 @@
+{
+  "suite": "alibi-adversarial-conformance/1.0",
+  "generated_at": "2026-11-17T14:09:25.390Z",
+  "policy_under_test": {
+    "max_rate_ppm": 50000,
+    "budget_msat": "varies by test"
+  },
+  "checks": [
+    {
+      "test": "20% commission rejected",
+      "status": "pass"
+    },
+    {
+      "test": "5% commission (boundary) accepted",
+      "status": "pass"
+    },
+    {
+      "test": "5.01% commission rejected",
+      "status": "pass"
+    },
+    {
+      "test": "Unauthorized marketplace rejected",
+      "status": "pass"
+    },
+    {
+      "test": "Unauthorized commission payee rejected",
+      "status": "pass"
+    },
+    {
+      "test": "Authorized marketplace + payee accepted",
+      "status": "pass"
+    },
+    {
+      "test": "Budget exhaustion: 5,000 sats request > 3,000 sats budget",
+      "status": "pass"
+    },
+    {
+      "test": "First request (5,000 of 8,000) accepted",
+      "status": "pass"
+    },
+    {
+      "test": "Second request (4,000 sats > 3,000 sats remaining) rejected",
+      "status": "pass"
+    },
+    {
+      "test": "Third request (3,000 sats fits exactly) accepted",
+      "status": "pass"
+    },
+    {
+      "test": "First request with unique hash accepted",
+      "status": "pass"
+    },
+    {
+      "test": "Duplicate hash rejected",
+      "status": "pass"
+    }
+  ],
+  "summary": {
+    "total": 12,
+    "passed": 12,
+    "failed": 0
+  },
+  "claim_scope": "Policy-layer enforcement only. No LND nodes involved in this run. Wallet-level enforcement requires the regtest verifier (verifier.js).",
+  "checksum_sha256": "9d187b7fa5cf3ad61fb7a447bc7baf6ab894fd292c112fdc337752111d6aa973"
+}

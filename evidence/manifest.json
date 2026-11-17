@@ -1,0 +1,63 @@
+{
+  "suite": "alibi-evidence-manifest/1.0",
+  "frozen_at": "2026-11-17T14:14:07.003Z",
+  "artifact_count": 11,
+  "artifacts": [
+    {
+      "path": "evidence/REAL_VS_MOCKED.md",
+      "bytes": 3508,
+      "sha256": "d4a7a496b27721321d84b19e11d47e7afe24a165f4fe6fdb6250e5c5dd6d9c6e"
+    },
+    {
+      "path": "evidence/acceptance-gates.md",
+      "bytes": 2059,
+      "sha256": "9625b7e86ebac890268618d262eaacf0770a05530ca2a211fd9b9d512f64f5d1"
+    },
+    {
+      "path": "evidence/adversarial-results.json",
+      "bytes": 1628,
+      "sha256": "c7137e12226790df3deb5c170f07ce3c2553afc509fe036c7cd4c2eef9f4ce62"
+    },
+    {
+      "path": "evidence/claims.json",
+      "bytes": 10055,
+      "sha256": "01c969e7297b29d7082ce271c59e003dc83728bf913671fb53f005bdb7238049"
+    },
+    {
+      "path": "evidence/concurrency-results.json",
+      "bytes": 1156,
+      "sha256": "516f0e571f595da305fb172de61184f5fd0a243dfcd78ac0eece7531785e6806"
+    },
+    {
+      "path": "evidence/mutation-results.json",
+      "bytes": 2245,
+      "sha256": "ac3e0e3ed030244bd1eb6bd3d52531f459ab153596ce0d5dc9afc0643363f46f"
+    },
+    {
+      "path": "evidence/runs/2026-11-17-offline/adversarial-stdout.txt",
+      "bytes": 1201,
+      "sha256": "50b650a81a2c0bafc8467ccd8bdc34ad07dd893a11db7ab60389b89c8a8aa025"
+    },
+    {
+      "path": "evidence/runs/2026-11-17-offline/auditor-stdout.txt",
+      "bytes": 666,
+      "sha256": "8aa1f0dff2323fcd0ae1c4c1e4ae3db524122726d62ef579b9a05b769179a2b6"
+    },
+    {
+      "path": "evidence/runs/2026-11-17-offline/credential-scan.txt",
+      "bytes": 466,
+      "sha256": "46dfe946d1323d767fa6a55f83531cc47d5cc4c616b0bd87d8aaeca8716220ba"
+    },
+    {
+      "path": "evidence/runs/2026-11-17-offline/pipeline-stdout.txt",
+      "bytes": 1547,
+      "sha256": "7d25904c889dd29b85d58330dfdb05044668ee12a0bb9bd389517bc96ec8a45b"
+    },
+    {
+      "path": "evidence/runs/2026-11-17-offline/simulator-stdout.txt",
+      "bytes": 2881,
+      "sha256": "59b8a61f1f344d99b89df33614cfd63a50a831fff5a0756a3c189ec5f62a21c7"
+    }
+  ],
+  "sha256_of_manifest": "e4c7e322d6804bd7f2dfcef1ffff947e2cc8c23674546e00f4221b7dbdbee3d4"
+}

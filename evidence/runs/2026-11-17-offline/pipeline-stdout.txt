@@ -1,0 +1,36 @@
+PASS :: total_channels === 3 
+PASS :: summary.backup_missing === 1 
+PASS :: summary.backed_up_peer_unverified === 1 
+PASS :: summary.backed_up_peer_recently_seen === 1 
+PASS :: Bob state === BACKED_UP_PEER_UNVERIFIED (BACKED_UP_PEER_UNVERIFIED)
+PASS :: Bob hours_since_last_connection > 72 (184)
+PASS :: Bob evidence has rule 
+PASS :: Bob recovery_depends_on mentions DLP 
+PASS :: Carol state === BACKED_UP_PEER_RECENTLY_SEEN (BACKED_UP_PEER_RECENTLY_SEEN)
+PASS :: Carol rule mentions backup=true 
+PASS :: Dave state === BACKUP_MISSING (BACKUP_MISSING)
+PASS :: Bob recommended_path = force_close (force_close)
+PASS :: Bob recommendation_basis present 
+PASS :: Bob plan requires approval 
+PASS :: Bob plan has 3 paths 
+PASS :: Bob paths include wait_and_reconnect 
+PASS :: Bob paths include cooperative_close 
+PASS :: Bob paths include force_close 
+PASS :: Bob force_close not available (peer unreachable) 
+PASS :: Bob force_close has csv_delay 
+PASS :: Carol recommended_path = wait_and_reconnect (wait_and_reconnect)
+PASS :: Carol cooperative path available 
+PASS :: Dave recommended_path is null (backup missing) (null)
+PASS :: Dave recommendation_basis mentions backup 
+PASS :: evidence has 4 events (4)
+PASS :: event[0] = EXPOSURE_SNAPSHOT 
+PASS :: event[1] = OPERATOR_DECISION 
+PASS :: event[2] = INTERVENTION_OUTCOME 
+PASS :: event[3] = REAUDIT 
+PASS :: sequences are 1..4 
+PASS :: each event links to previous hash 
+PASS :: hash chain verifies 
+PASS :: anchor has final_chain_hash 
+PASS :: anchor has signature 
+
+ALL PIPELINE CHECKS PASSED

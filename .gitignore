@@ -15,8 +15,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-# Evidence
-evidence/
+# Evidence is committed (proof artifacts must be visible to judges).
+# Credentials remain blocked by the global patterns above (*.macaroon,
+# *.key, *.cert, *.seed, data/*.pass, *.log).
 
 # Embedded repos
 alibi/fresh/.git

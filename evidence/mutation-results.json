@@ -1,0 +1,57 @@
+{
+  "suite": "alibi-mutation-test/1.0",
+  "generated_at": "2026-11-17T14:09:25.636Z",
+  "source_file": "engine/bin/adversarial-test.js",
+  "source_sha256_before": "f0e4dd9774cfc81c9135a9524c840d70f5c185324c7584bbffd13fa56467632d",
+  "source_sha256_after": "f0e4dd9774cfc81c9135a9524c840d70f5c185324c7584bbffd13fa56467632d",
+  "byte_identical_restore": true,
+  "method": "Each guard disabled in a throwaway copy; the correlated conformance test must fail.",
+  "results": [
+    {
+      "id": "rate-cap",
+      "guard": "EXCEEDS_MAX_PERCENT (5% rate cap)",
+      "mutation": "disabled: if (commBigInt > maxComm) {",
+      "expected_test_to_fail": "20% commission rejected",
+      "observed_fail_line": "✗ FAIL: 20% commission rejected",
+      "mutant_exit_code": 1,
+      "verdict": "guard is load-bearing",
+      "passed": true
+    },
+    {
+      "id": "payee-allowlist",
+      "guard": "UNAUTHORIZED_PAYEE (payee allowlist)",
+      "mutation": "disabled: if (commissionPayeePubkey && commissionPayeePubkey !== this.allowedPayee) {",
+      "expected_test_to_fail": "Unauthorized commission payee rejected",
+      "observed_fail_line": "✗ FAIL: Unauthorized commission payee rejected",
+      "mutant_exit_code": 1,
+      "verdict": "guard is load-bearing",
+      "passed": true
+    },
+    {
+      "id": "budget-cap",
+      "guard": "BUDGET_EXCEEDED (atomic budget)",
+      "mutation": "disabled: if (commBigInt > remaining) {",
+      "expected_test_to_fail": "Budget exhaustion",
+      "observed_fail_line": "✗ FAIL: Budget exhaustion: 5,000 sats request > 3,000 sats budget",
+      "mutant_exit_code": 1,
+      "verdict": "guard is load-bearing",
+      "passed": true
+    },
+    {
+      "id": "duplicate-hash",
+      "guard": "DUPLICATE_HASH (replay prevention)",
+      "mutation": "disabled:     if (this._memReservations.has(paymentHash)) {",
+      "expected_test_to_fail": "Duplicate hash rejected",
+      "observed_fail_line": "✗ FAIL: Duplicate hash rejected",
+      "mutant_exit_code": 1,
+      "verdict": "guard is load-bearing",
+      "passed": true
+    }
+  ],
+  "summary": {
+    "total": 4,
+    "load_bearing": 4,
+    "dead_guards": 0
+  },
+  "checksum_sha256": "e587ae7e32ca300199e66fda87311d36c6830471fa20938e835ba8c7a2b3fdb7"
+}

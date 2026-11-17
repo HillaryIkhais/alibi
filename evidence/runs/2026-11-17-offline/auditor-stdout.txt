@@ -1,0 +1,13 @@
+mock LND REST listening on http://127.0.0.1:19876
+PASS :: case A offsite_stale === true (true)
+PASS :: case A total_channels === 5 (5)
+PASS :: case A covered_count === 3 (3)
+PASS :: case A uncovered_count === 2 (2)
+PASS :: case A uncovered_sats === 1100000 (1100000)
+PASS :: case A all findings kind === fact 
+PASS :: case A peers_online === 2 (2)
+PASS :: case A uncovered are chans 4 & 5 
+PASS :: case A chan 3 covered but peer offline (deferred) 
+PASS :: case B offsite_stale === false (false) live=a53bb1632fd9f6755287cf8e5406633faaf2b1c65d5c549458a58736cfe037db offsite=a53bb1632fd9f6755287cf8e5406633faaf2b1c65d5c549458a58736cfe037db
+
+ALL OFFLINE CHECKS PASSED

@@ -1,0 +1,34 @@
+ALIBI ADVERSARIAL CONFORMANCE TEST SUITE
+=========================================
+
+[1] Commission Percentage Tests
+--------------------------------
+  ✓ PASS: 20% commission rejected
+  ✓ PASS: 5% commission (boundary) accepted
+  ✓ PASS: 5.01% commission rejected
+
+[2] Payee Authorization Tests
+-----------------------------
+  ✓ PASS: Unauthorized marketplace rejected
+  ✓ PASS: Unauthorized commission payee rejected
+  ✓ PASS: Authorized marketplace + payee accepted
+
+[3] Budget Enforcement Tests
+----------------------------
+  ✓ PASS: Budget exhaustion: 5,000 sats request > 3,000 sats budget
+  ✓ PASS: First request (5,000 of 8,000) accepted
+  ✓ PASS: Second request (4,000 sats > 3,000 sats remaining) rejected
+  ✓ PASS: Third request (3,000 sats fits exactly) accepted
+
+[4] Duplicate Payment Hash Tests
+--------------------------------
+  ✓ PASS: First request with unique hash accepted
+  ✓ PASS: Duplicate hash rejected
+
+=========================================
+TEST RESULTS: 12 passed, 0 failed
+=========================================
+Evidence written: evidence/adversarial-results.json
+
+VENDOR POLICY ENFORCEMENT: VERIFIED
+All adversarial scenarios blocked correctly.

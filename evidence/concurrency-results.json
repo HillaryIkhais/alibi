@@ -1,0 +1,40 @@
+{
+  "suite": "alibi-concurrency-test/1.0",
+  "generated_at": "2026-11-17T14:10:54.045Z",
+  "scope": "Single-process atomicity of check-then-reserve under interleaved async arrivals. Not distributed/multi-root.",
+  "budget_units": "9",
+  "concurrent_requests": 8,
+  "results": [
+    {
+      "name": "no over-commit under 8 concurrent arrivals",
+      "status": "pass",
+      "detail": "committed=9, budget=9"
+    },
+    {
+      "name": "exactly floor(budget/amount) approvals",
+      "status": "pass",
+      "detail": "approved=3, expected=3"
+    },
+    {
+      "name": "each approval is unique (no double reserve)",
+      "status": "pass",
+      "detail": "reserved=3, approved=3"
+    },
+    {
+      "name": "rejections carry BUDGET_EXCEEDED",
+      "status": "pass",
+      "detail": "rejections=5"
+    },
+    {
+      "name": "replayed hash refused while fresh hash also evaluated",
+      "status": "pass",
+      "detail": "[{\"ok\":false,\"reason\":\"DUPLICATE_HASH\"},{\"ok\":true}]"
+    }
+  ],
+  "summary": {
+    "total": 5,
+    "passed": 5,
+    "failed": 0
+  },
+  "checksum_sha256": "b51c5b8817a770ed48fe9b08ae08d90e0d2d752547e713682edf263ff2f1388d"
+}
