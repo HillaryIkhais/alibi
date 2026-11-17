@@ -866,7 +866,7 @@ class CommissionService {
     return { success: true };
   }
 
-  async payCommission(paymentRequest) {
+  async reconcile({ paymentHash }) {
     if (!this.lnd) return { success: false, reason: 'REAL mode required' };
     // Authoritative LND state, not application DB
     const invoice = await this.lnd.lookupInvoice(paymentHash);
