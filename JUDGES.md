@@ -46,13 +46,14 @@ node engine/bin/commission-flow-simulator.js # FLOW COMPLETE
 Open [`evidence/REAL_VS_MOCKED.md`](evidence/REAL_VS_MOCKED.md) and
 [`evidence/claims.json`](evidence/claims.json). Every README sentence resolves to one of these rows.
 
-## The one thing Alibi does NOT claim right now
+## The live-settlement headline is now evidenced
 
-The live 18/18 node-backed verifier result is **NOT REPRODUCIBLE** in the shipped environment: no
-`evidence/bundle.json` exists and the local regtest nodes are desynced. The verifier itself is real
-and fails closed, but the artifact is absent. See claim C10 in `claims.json` and the last section of
-`REPRODUCE.md` for the exact restore procedure. Judge accordingly: the deterministic policy layer is
-proven; the live settlement headline is not currently evidenced.
+`evidence/bundle.json` contains the independent verifier output: **18/18 pass, exit 0** against three
+live LND nodes on regtest. It checks sale/commission invoice settlement, buyer payment finality, the
+shared-preimage SHA-256 relation, and the 100,000 = 5,000 + 95,000 split, using read-only macaroons
+and no preimage in the artifact. Claim C10 in `claims.json` is VERIFIED; `REPRODUCE.md` §7 has the
+full lab-rebuild and settlement-cycle procedure. Scope limit: controlled regtest node-state
+verification, not Bitcoin consensus or trustlessness.
 
 ## Where things live
 - `Alibi_PRD.md` — build-against spec, invariant, Q&A

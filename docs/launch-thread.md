@@ -27,8 +27,8 @@ A hostile marketplace sends 20% against a 5% cap → `EXCEEDS_MAX_PERCENT`. Unap
 **7/ The sponsor layer**
 The load-bearing primitive is the NWC Commission Payments draft's `make_commission_invoice` method (`nwc#8`), implemented in `engine/bin/commission-service.js` and restricted in `engine/bin/nwc-server.js`. Remove it and there is no product — this is structural dependence, not a logo.
 
-**8/ The honesty limit**
-Here's why you can believe the rest: the live 18/18 node-backed verifier result is NOT currently reproduced — no `evidence/bundle.json`, and the local regtest lab is desynced. We do not claim it. The deterministic policy layer is proven (12/12 + 4/4 + 5/5); the live settlement artifact is a documented gap with a restore procedure. Regtest only, no mainnet, single-process atomicity, static UI.
+**8/ The live proof — and its limit**
+The independent verifier ran against three live LND nodes on regtest: `evidence/bundle.json` shows `summary {passed: 18, failed: 0}`, exit 0. It queried node state with read-only macaroons — sale and commission hold invoices settled, buyer payment finalized, preimage SHA-256-checked in memory and never written. The deterministic layer is separately proven (12/12 + 4/4 + 5/5). Limit: controlled regtest node-state verification, not Bitcoin consensus or trustlessness. Regtest only, no mainnet, single-process atomicity, static UI.
 
 **9/ The links**
 Repo: github.com/HillaryIkhais/alibi · Verify in 60s: the three commands in post 4 · Judge path: `JUDGES.md` · Mechanism: `THREAT_MODEL.md` · Honesty: `evidence/REAL_VS_MOCKED.md`.

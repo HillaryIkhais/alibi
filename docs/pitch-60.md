@@ -22,13 +22,14 @@ over-commit.
 The load-bearing primitive is the NWC Commission Payments draft's `make_commission_invoice` method.
 Remove it and there's no product.
 
-Here's the limit, before you ask: the live eighteen-for-eighteen node-backed verifier result is not
-currently reproduced — there's no bundle, and the local regtest lab is desynced. We don't claim it.
-The deterministic layer is proven, the gap is disclosed, and the restore procedure is in the repo.
+And it's not just simulation: the independent verifier ran against three live regtest LND nodes and
+produced `evidence/bundle.json` with eighteen out of eighteen checks passing. Here's the limit, before
+you ask: regtest node-state verification, not Bitcoin consensus or trustlessness — single-process
+atomicity, no mainnet. The artifact and the restore procedure are in the repo.
 
 Verify it yourself, right now: `node engine/bin/adversarial-test.js`, then `node engine/bin/mutation-test.js`.
 That's Alibi — commission authority without wallet access."
 
 ---
 
-**Three anchors to keep reflexive:** invariant = "authority only narrows"; test count = 12/12 + 4/4 + 5/5; identifier = regtest chain tip `1d8ef2...`.
+**Three anchors to keep reflexive:** invariant = "authority only narrows"; test count = 12/12 + 4/4 + 5/5 + live 18/18; identifier = settlement hash `4750ca45cb46d9c7c24a1caae5b318164289ef4c77191f3437b7a163ddafbf66` in `evidence/bundle.json`.

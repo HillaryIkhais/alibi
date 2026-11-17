@@ -51,8 +51,9 @@ marketplace's honesty is never an input.
 - **In-memory state fallback.** `better-sqlite3` is unavailable in the build environment; the service
   falls back to in-memory state that is lost on restart. Durability is implemented in code but not
   verified in this environment.
-- **Live settlement not currently evidenced.** No `evidence/bundle.json`; regtest lab desynced. The
-  verifier mechanism is real but the artifact is absent (claim C10).
+- **Live settlement is regtest node-state verification only.** `evidence/bundle.json` (18/18, exit 0)
+  proves invoice/payment state on three controlled LND nodes with read-only credentials. It is not a
+  Bitcoin consensus proof or a trustless attestation (claim C10).
 - **Regtest only.** No mainnet/testnet deployment; funds are non-redeemable test sats.
 
 ## What the model never decides

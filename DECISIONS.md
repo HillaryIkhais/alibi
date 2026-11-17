@@ -29,13 +29,14 @@ in memory, redacts it, and fails closed without credentials.
 **Why:** A verifier that read Alibi's own database would be circular. Node-backed state is the only
 independent source of truth for settlement.
 
-## D6 — Do not claim 18/18 without a bundle (the hard call)
-**Decision:** Downgrade the live 18/18 verifier claim to **NOT REPRODUCIBLE** across README, PRD, and
-docs. No `evidence/bundle.json` exists, and the local regtest lab is desynced (LND expects chain
-`ac3a47...`, bitcoind only has `1d8ef2...`; channels inactive; Bob/Carol lost history).
+## D6 — Do not claim 18/18 without a bundle (the hard call) — CLOSED
+**Decision:** The live 18/18 verifier claim was downgraded to **NOT REPRODUCIBLE** while no
+`evidence/bundle.json` existed and the regtest lab was desynced. That gap is now closed: the lab was
+rebuilt from clean volumes, a full same-hash settlement cycle was executed, and `bundle.json` was
+regenerated at 18/18, exit 0. All claims were restored to VERIFIED.
 **Why:** The proof doctrine is that no number appears without a regenerable artifact. Claiming 18/18
-without one would be the single lie that destroys every true claim. Better to ship a proven policy
-layer plus an honest gap. Restore procedure is documented in `REPRODUCE.md` §7.
+without one would be the single lie that destroys every true claim — so the downgrade was correct at
+the time, and the restoration is equally evidence-driven. Restore procedure: `REPRODUCE.md` §7.
 
 ## D7 — Fix the reconcile/payCommission shadow bug
 **Decision:** Renamed the second `payCommission(paymentRequest)` (which referenced undefined

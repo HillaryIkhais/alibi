@@ -6,11 +6,12 @@ captured from a running system, CUT THE SCENE — do not fake it.
 
 Target length: 2:30. Max: 3:00.
 
-> **Revision note (honesty):** An earlier cut of this script showed a live
-> "18/18 verifier checks pass" scene. That scene is now **CUT** because there is
-> no committed `evidence/bundle.json` and the local regtest lab is desynced. The
-> video below only contains scenes reproducible by the commands in
-> `REPRODUCE.md`. Numbers must match `README.md` and `evidence/REAL_VS_MOCKED.md`.
+> **Revision note (honesty):** An earlier cut removed the live "18/18 verifier
+> checks pass" scene because the artifact was missing. That scene is now
+> **RESTORED**: `evidence/bundle.json` is committed with 18/18, exit 0, from a
+> real three-node regtest cycle. Every scene below is reproducible by the
+> commands in `REPRODUCE.md`. Numbers must match `README.md` and
+> `evidence/REAL_VS_MOCKED.md`.
 
 ---
 
@@ -80,7 +81,7 @@ Voiceover:
 
 ---
 
-## 1:35–2:05 — Failure and recovery (screen: cancellation + audit pipeline)
+## 1:35–1:55 — Failure and recovery (screen: cancellation + audit pipeline)
 
 Show the cancellation portion of the simulator output: buyer payment not settled,
 no commission collected, budget reservation released, sale canceled safely.
@@ -103,25 +104,46 @@ Voiceover:
 
 ---
 
-## 2:05–2:30 — Close (screen: invariant + honesty line + repository)
+## 1:55–2:20 — Live settlement (screen: `bundle.json` summary, 18/18)
 
-> "Marketplaces can collect their fee. They cannot touch the wallet it came
-> from. The policy is enforced by the wallet and proven by tests that fail
-> when the guards are removed."
+Show the committed artifact (captured from a real run, not typed):
 
-Repository URL. One line, verbatim:
+```bash
+jq '{network, summary, preimage_matches_hash}' evidence/bundle.json
+```
 
-*"Experimental NWC Commission Payments draft. Regtest. Policy layer proven
-12/12 + 4/4. Live settlement verification not yet reproduced — disclosed in
-README."*
+Voiceover:
+
+> "And this is real money movement on regtest: three LND nodes, one sale hold
+> invoice, one commission hold invoice with the same hash. The buyer paid, the
+> vendor paid the commission, both settled with the shared preimage. The
+> independent verifier queried node state directly with read-only credentials:
+> eighteen for eighteen. It never sees the preimage."
+
+**On-screen, verbatim:** `"Regtest node-state verification — not Bitcoin consensus, not trustless."`
 
 ---
 
-## What was CUT and why (do not restore without evidence)
+## 2:20–2:30 — Close (screen: invariant + honesty line + repository)
 
-- The old "18/18 verifier checks pass on live regtest" scene — no `bundle.json`,
-  lab desynced. Restore only after `REPRODUCE.md` §7 produces a committed bundle.
-- Any on-screen "Verified on live LND regtest" status bar — same reason.
+> "Marketplaces can collect their fee. They cannot touch the wallet it came
+> from. The policy is enforced by the wallet, proven by tests that fail when
+> the guards are removed, and the settlement is verified on live regtest nodes."
+
+Repository URL. One line, verbatim:
+
+*"Experimental NWC Commission Payments draft. Regtest. Policy 12/12 + 4/4;
+concurrency 5/5; live settlement 18/18 (`bundle.json`). Not mainnet, not
+trustless."*
+
+---
+
+## What was CUT and why
+
+- Nothing currently. The previously cut "18/18 verifier checks pass on live
+  regtest" scene was restored once `REPRODUCE.md` §7 produced a committed
+  `evidence/bundle.json`. Restore any future scene only with a committed,
+  regenerable artifact.
 
 ## Capture checklist
 
@@ -130,9 +152,10 @@ README."*
 - [ ] `concurrency-test.js` captured fresh (5/5, no over-commit)
 - [ ] `commission-flow-simulator.js` shows FLOW COMPLETE + cancellation invariants
 - [ ] Pipeline (34) and auditor (10) outputs captured
+- [ ] `bundle.json` summary captured fresh from the committed artifact (18/18, exit 0)
 - [ ] No preimage, macaroon, seed, or connection secret on screen
 - [ ] Every spoken number matches `README.md` and `evidence/REAL_VS_MOCKED.md`
-- [ ] No "18/18" or "verified on live regtest" claim appears anywhere
+- [ ] Any "18/18" or "verified on live regtest" claim appears only with `bundle.json` committed
 
 ## Hard stops (do not publish if)
 
@@ -140,4 +163,4 @@ README."*
 2. Any scene uses placeholder invoice strings or typed success text.
 3. The README, PRD, storyboard, and video disagree on any status — mismatch is
    negative evidence.
-4. A live-verification scene is restored without a committed `bundle.json`.
+4. A live-verification scene is shown without a committed, regenerable `bundle.json`.

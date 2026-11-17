@@ -86,29 +86,55 @@ node engine/bin/evidence-manifest.js
 Writes `evidence/manifest.json`: SHA-256 of every proof artifact plus a manifest self-checksum.
 This is how a judge confirms the committed bytes are the bytes that were run.
 
-## 7. Live node-backed verifier — currently NOT REPRODUCIBLE
+## 7. Live node-backed verifier — 18/18 (regtest)
+
+**Current state:** `evidence/bundle.json` is committed with `summary {passed: 18, failed: 0}`, exit 0,
+from a live three-node regtest cycle. It is regenerable with the steps below. Credentials are extracted
+to a temp dir outside the repo and are never committed.
+
+### 7a. Stand up the lab from clean volumes
 
 ```bash
-# Only meaningful when the three-node regtest lab is healthy and a full
-# settlement cycle has been executed for a known payment hash.
-ALIBI_ALICE_REST=https://127.0.0.1:10039 ALIBI_ALICE_MACAROON=<hex> \
-ALIBI_BOB_REST=https://127.0.0.1:10040   ALIBI_BOB_MACAROON=<hex> \
-ALIBI_CAROL_REST=https://127.0.0.1:10041 ALIBI_CAROL_MACAROON=<hex> \
-ALIBI_TLS_CERT=<path-to-tls.cert> ALIBI_PAYMENT_HASH=<64-hex> \
+cd harbor
+docker compose down -v && docker compose up -d
+# wait for bitcoind to be healthy, then:
+bash ./lab/setup.sh
+cd ..
+```
+
+`setup.sh` creates the bitcoind wallet (Bitcoin Core 32+ no longer auto-creates one), mines 101 blocks
+to exit initial block download, funds all three LND wallets, opens Alice↔Bob and Bob↔Carol channels,
+and seeds outbound liquidity with two invoice payments so the buyer can route through Bob.
+
+### 7b. Execute one full settlement cycle for a known hash
+
+Generate `PREIMAGE` (32 random bytes) and `HASH = SHA256(PREIMAGE)`. Then, with `lncli` pointed at each
+node's custom RPC port (Alice `10029`, Bob `10030`, Carol `10031`):
+
+1. Alice (vendor): `addholdinvoice --amt 100000 $HASH` → sale BOLT11.
+2. Bob (marketplace): `addholdinvoice --amt 5000 $HASH` → commission BOLT11 (same hash).
+3. Carol (buyer): `payinvoice --pay_req=<sale BOLT11> --force` → HTLC held at Alice (`ACCEPTED`).
+4. Alice: `payinvoice --pay_req=<commission BOLT11> --force` → HTLC held at Bob (`ACCEPTED`). Steps 3
+   and 4 block until settlement; run step 4 in the background.
+5. Bob: `settleinvoice $PREIMAGE`; Alice: `settleinvoice $PREIMAGE` → both invoices `SETTLED`, both
+   payments `SUCCEEDED`.
+
+### 7c. Run the independent verifier
+
+Extract each node's `readonly.macaroon` (hex) and `tls.cert` from its container. Because each LND node
+has its own self-signed cert, concatenate all three certs into one CA bundle and pin that path:
+
+```bash
+ALIBI_ALICE_REST=https://127.0.0.1:10039 ALIBI_ALICE_MACAROON=<alice-hex> \
+ALIBI_BOB_REST=https://127.0.0.1:10040   ALIBI_BOB_MACAROON=<bob-hex> \
+ALIBI_CAROL_REST=https://127.0.0.1:10041 ALIBI_CAROL_MACAROON=<carol-hex> \
+ALIBI_TLS_CERT=<path-to-concatenated-certs> ALIBI_PAYMENT_HASH=<64-hex> \
   node engine/bin/verifier.js > evidence/bundle.json
 ```
 
 The verifier fails closed: exit 2 on missing credentials, exit 1 on any failed check, exit 0 only
 when all 18 pass. The preimage is SHA-256-checked in memory and redacted before the bundle is written.
-
-**Current state (honest):** this command cannot produce a passing bundle in the shipped environment.
-The regtest LND nodes are stuck at `Waiting for chain backend to finish sync rev=ac3a47` while
-bitcoind's only tip is `1d8ef2...` at height 243 — the expected chain is gone. All Lightning channels
-are inactive and Bob/Carol have no invoice/payment history. To restore: tear down the lab, reset LND
-wallets against the current bitcoind, re-run `harbor/lab/setup.sh`, execute a complete
-seller-authorized / buyer-paid / commissioned settlement cycle for a known payment hash, then run the
-verifier above and commit the resulting `evidence/bundle.json`. Until then, the 18/18 claim is not
-made in the README.
+No macaroon, cert, or preimage is included in the committed artifact.
 
 ## Credential hygiene
 Credentials are never committed. `.gitignore` blocks `*.macaroon`, `*.seed`, `*.key`, `*.cert`,

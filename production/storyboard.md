@@ -1,10 +1,10 @@
 # Alibi Checkout — Production Storyboard
 
 > **HONESTY REVISION — READ FIRST.** Scenes that previously claimed "18/18 verified on live
-> regtest" or showed a "Verified on live LND regtest" status bar are **CUT / REWRITTEN** below. No
-> committed `evidence/bundle.json` exists and the local regtest lab is desynced. If a rendered video
-> contains those strings, it is stale and must not be submitted until re-rendered. The authoritative,
-> honest script is `docs/demo-script.md`; status source of truth is `evidence/REAL_VS_MOCKED.md`.
+> regtest" were cut during the proof phase and are now **RESTORED**: `evidence/bundle.json` is
+> committed with 18/18 pass, exit 0, from a real three-node regtest cycle. A pre-existing rendered
+> video that still says "not reproduced" is stale and must be re-rendered from the authoritative
+> script `docs/demo-script.md`; status source of truth is `evidence/REAL_VS_MOCKED.md`.
 
 **Creative concept:** "Permission, not trust." A seller gives a marketplace one narrow permission — collect its agreed commission — and nothing else. The video shows the three checkout experiences (seller approval, buyer purchase, seller receipt) plus the authority test (20% rejected) and mutation proof, all reproducible from deterministic tests.
 

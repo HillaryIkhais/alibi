@@ -6,6 +6,7 @@
 
 ![tests](https://img.shields.io/badge/conformance-12%2F12-2FA46A)
 ![mutation](https://img.shields.io/badge/guards%20load--bearing-4%2F4-2FA46A)
+![live](https://img.shields.io/badge/live%20settlement-18%2F18-2FA46A)
 ![pipeline](https://img.shields.io/badge/recovery%20checks-34-2FA46A)
 ![network](https://img.shields.io/badge/network-regtest-FFCC33)
 ![standard](https://img.shields.io/badge/NWC%20draft-nwc%238-6f42c1)
@@ -71,18 +72,18 @@ proves none of them are. Full command set in [`REPRODUCE.md`](REPRODUCE.md). Jud
 | Channel-backup auditor (mock LND) | **10 checks** | `runs/2026-11-17-offline/auditor-stdout.txt` |
 | Cancellation invariants (SIM) | **FLOW COMPLETE**, 5 invariants | `runs/2026-11-17-offline/simulator-stdout.txt` |
 | No keys/macaroons/seeds in 1,675 history blobs | **0 found** | `runs/2026-11-17-offline/credential-scan.txt` |
-| **Live 18/18 node-backed settlement** | **NOT REPRODUCIBLE** | no `bundle.json`; see below |
+| **Live 18/18 node-backed settlement** | **18/18, exit 0** | [`bundle.json`](evidence/bundle.json) · `node engine/bin/verifier.js` |
 
 All artifacts are SHA-256-pinned in [`evidence/manifest.json`](evidence/manifest.json) (regenerate:
 `node engine/bin/evidence-manifest.js`). Machine-readable ledger:
 [`evidence/claims.json`](evidence/claims.json).
 
-> **The one claim we do not make right now.** There is no `evidence/bundle.json`, and the local
-> regtest nodes are desynced (LND expects chain `ac3a47…`, bitcoind's only tip is `1d8ef2…`; channels
-> inactive; Bob/Carol have no invoice history). The verifier itself is real and fails closed, but the
-> 18/18 result is **not evidenced**. We will not print a number a command cannot regenerate. Restore
-> procedure: [`REPRODUCE.md`](REPRODUCE.md) §7. Full disclosure:
-> [`evidence/REAL_VS_MOCKED.md`](evidence/REAL_VS_MOCKED.md).
+> **The live settlement is evidenced.** `evidence/bundle.json` is the output of the independent,
+> read-only verifier run against three real LND nodes on regtest: sale hold invoice settled on the
+> vendor node, commission hold invoice settled on the marketplace node, buyer payment finalized, and
+> `SHA256(preimage) == payment_hash` checked in memory (never written). The verifier queries node
+> state directly and fails closed. Reproduction procedure: [`REPRODUCE.md`](REPRODUCE.md) §7. Scope
+> and limits: [`evidence/REAL_VS_MOCKED.md`](evidence/REAL_VS_MOCKED.md).
 
 ---
 
@@ -122,7 +123,7 @@ Full version: [`evidence/REAL_VS_MOCKED.md`](evidence/REAL_VS_MOCKED.md).
 | Recovery / audit machinery (offline) | **VERIFIED** |
 | Cancellation invariants (SIM) | **VERIFIED** |
 | Credential hygiene | **VERIFIED** |
-| Live 18/18 settlement | **NOT REPRODUCIBLE** (no artifact) |
+| Live 18/18 settlement | **VERIFIED** (`bundle.json`, 18/18, exit 0) |
 | SQLite durability | **IMPLEMENTED, NOT VERIFIED** (`better-sqlite3` unavailable) |
 | Full NWC relay (NIP-44/47), mainnet | **NOT BUILT** |
 
@@ -148,7 +149,7 @@ in memory and redacted before any output.
 
 ## Known limits (stated before they are found)
 
-- **No live-settlement artifact today** — 18/18 is not claimed; see above.
+- **Live settlement is a controlled regtest cycle** — 18/18 proves node state, not Bitcoin consensus or trustlessness.
 - **Regtest only** — no mainnet/testnet; non-redeemable test sats.
 - **Single-process atomicity** — no multi-root reservation.
 - **In-memory fallback** — no verified SQLite durability in this environment.
@@ -166,7 +167,7 @@ in memory and redacted before any output.
 - [x] MVP: commission policy + recovery flow, proven at the deterministic layer
 - [x] Technical: integer math, payment-hash linking, corrected LND REST encoding
 - [x] Conformance: 12/12 adversarial + 4/4 mutation
-- [x] Verification: node-backed verifier exists and fails closed (result not reproduced — disclosed)
+- [x] Verification: node-backed verifier 18/18 against live regtest nodes (`bundle.json`)
 - [x] Recovery: cancellation invariants + audit pipeline proven offline
 - [x] Honesty: no number printed without a regenerable artifact
 
@@ -178,7 +179,7 @@ in memory and redacted before any output.
 |---|---|
 | What is actually enforced? | The invariant: authority only narrows. Rate, payee, budget, and replay checks run at delegation time. 12/12 conformance + 4/4 mutation proof. |
 | How do you know the tests aren't fake? | The mutation harness deletes each guard and requires the matching test to fail. Source restored byte-identical (SHA-256 recorded both times). |
-| What about the 18/18 verifier? | It is real and fails closed, but there is no artifact and the local lab is desynced. We do not claim it until `bundle.json` is committed and regenerable. |
+| What about the 18/18 verifier? | It is real, fails closed, and produced `evidence/bundle.json`: 18/18 pass, exit 0, against live regtest LND nodes queried with read-only macaroons. No preimage or credential is in the artifact. |
 | What is mocked? | Auditor uses a mock LND; pipeline uses fixtures; simulator uses in-memory state. Each is labeled in `REAL_VS_MOCKED.md`. |
 | What breaks in production? | Shared-preimage collusion; single-process atomicity; no verified durability; regtest only. All disclosed. |
 | Is there a model in the payout path? | No. Deterministic BigInt math and allowlists. Any LLM output is documentation only, never a payment decision. |

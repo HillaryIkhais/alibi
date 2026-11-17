@@ -13,7 +13,7 @@ Alibi gives Lightning marketplaces conditional authority to collect an agreed co
 - **Act 2 — The invariant:** Authority can only narrow, never widen. A commission connection's effective authority at any moment is a subset of its initial grant; reserved budget cannot be double-spent; payment hashes cannot be replayed with different parameters.
 - **Act 3 — The mechanism:** Vendor creates policy (5% max, payee allowlist, budget). Marketplace calls `make_commission_invoice` — vendor decodes BOLT11, validates payment hash match, checks payee against allowlist, enforces rate and budget atomically before creating the sale hold invoice. Buyer pays one invoice. Vendor pays commission from proceeds. Settlement is independent and verified.
 - **Act 4 — The attack lab:** 12 adversarial scenarios: 20% commission blocked, unauthorized payee blocked, budget exhaustion blocked, duplicate payment hash blocked, `pay_invoice` call blocked. All 12 blocked.
-- **Act 5 — The verification (LIMITATION):** `verifier.js` is a real, node-backed verifier that would check sale/commission settlement, buyer payment, and the 100,000 = 5,000 + 95,000 split against all three LND nodes. **As of this revision there is no `evidence/bundle.json` and the local regtest nodes are desynced, so the 18/18 result is NOT REPRODUCIBLE and is not claimed.** The proven surface is the deterministic policy layer (12/12 conformance + 4/4 mutation). See `evidence/REAL_VS_MOCKED.md` and `REPRODUCE.md` §7.
+- **Act 5 — The verification:** `verifier.js` is a real, node-backed verifier that checks sale/commission settlement, buyer payment, and the 100,000 = 5,000 + 95,000 split against all three LND nodes. It produced `evidence/bundle.json`: **18/18 pass, exit 0**, on a live regtest cycle (sale hold invoice settled, commission hold invoice settled, buyer payment finalized, preimage hash checked in memory). Read-only macaroons; no preimage or credential in the artifact. The deterministic layer is separately proven at 12/12 conformance + 4/4 mutation. See `evidence/REAL_VS_MOCKED.md` and `REPRODUCE.md` §7.
 
 ## 3. Problem statement + ecosystem gap
 African digital service vendors want marketplace distribution but refuse to give platforms unrestricted Lightning wallet control. Existing solutions either take custody of funds, grant broad spending permissions, require buyers to pay twice, or trust vendors to pay commissions later — all unreliable or unsafe.
@@ -24,7 +24,7 @@ African digital service vendors want marketplace distribution but refuse to give
 | Goals | Non-goals |
 |---|---|
 | 12/12 adversarial conformance tests pass | Full NWC relay (NIP-44/NIP-47) |
-| Live 18/18 verifier result — currently NOT REPRODUCIBLE (no bundle.json) | SQLite durability in build environment |
+| Live 18/18 verifier result — VERIFIED (`bundle.json`, exit 0) | SQLite durability in build environment |
 | Policy enforcement: 5% max commission, payee allowlist, atomic budget | Multi-hop payment optimization |
 | Full payment lifecycle: hold invoice → buyer pays → commission settled → seller receives earnings → revocation | Multi-currency support |
 | Independent node-backed verification | Multi-root reservation |
@@ -118,7 +118,7 @@ pending → held → settled / released
 All transitions are validated by the policy engine. Illegal transitions throw.
 
 ## 13. Differentiator (built only after P0 is recorded)
-- **Alibi:** Wallet-side policy enforcement, 12/12 adversarial + 4/4 mutation-verified, base64-corrected LND endpoints. Live 18/18 not currently evidenced (disclosed).
+- **Alibi:** Wallet-side policy enforcement, 12/12 adversarial + 4/4 mutation-verified, base64-corrected LND endpoints, and a live 18/18 node-backed settlement (`bundle.json`).
 - **NobPay:** No commission permission
 - **Twese:** Hold invoices only, no policy
 - **SatsFarm:** No mainnet, sandbox only
@@ -167,7 +167,7 @@ README.md           pitch + proof + manual
 2. Why hasn't anyone fixed it? "LND REST endpoints were wrong (hex vs base64), commission handler had undefined params, duplicate payCommission."
 3. What is the one invariant? "Authority can only narrow, never widen."
 4. Show me it holding under concurrency. "12 adversarial scenarios all block; budget reservation is atomic."
-5. Show me it holding under attack. "The 12 adversarial tests block every widened-authority case; the mutation harness proves each guard is load-bearing (4/4). A node-backed verifier exists and fails closed, but its live 18/18 result is not currently evidenced — we don't claim it."
+5. Show me it holding under attack. "The 12 adversarial tests block every widened-authority case; the mutation harness proves each guard is load-bearing (4/4). The independent node-backed verifier ran against live regtest LND nodes: 18/18 pass, exit 0, with the full artifact in `evidence/bundle.json`."
 6. What happens on timeout / partial failure? "Uncertain outcomes are a state (`UNRESOLVED`), reconciled from source of truth."
 7. What is mocked? "SIM mode uses in-memory state (better-sqlite3 not in build env). Real mode uses LND read-only credentials."
 8. What is on mainnet/testnet? "Regtest only. Not mainnet. Not trustless. Funds are non-redeemable testnet/regtest sats."
