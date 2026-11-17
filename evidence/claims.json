@@ -140,7 +140,7 @@
       "layer": "live-integration",
       "mechanism": "engine/bin/verifier.js queries all three nodes with read-only macaroons; checks invoice existence/amount/hash/settlement, preimage SHA-256 in memory, arithmetic split, and buyer payment finality.",
       "artifact": "evidence/bundle.json",
-      "artifact_sha256": "50f994d5919da37721312ea2c8829066b62fb913f0e73bdad610fbea3e62ba2a",
+      "artifact_sha256": "a2387ccea4889f3d7cd213a77a6e2825b5f2788d243df736d84910b365635d11",
       "command": "node engine/bin/verifier.js > evidence/bundle.json (requires 3 live nodes, credentials, ALIBI_PAYMENT_HASH)",
       "expected": "summary {passed: 18, failed: 0}, exit 0, bundle.json with checksum.",
       "regeneration": "Rebuilt the regtest lab from clean volumes with harbor/lab/setup.sh (bitcoind 32 wallet creation, IBD mining, channels, seed liquidity), created same-hash hold invoices on Alice (sale, 100000 sats) and Bob (commission, 5000 sats), Carol paid the sale, Alice paid the commission, both were settled with the shared preimage, then the verifier ran with read-only macaroons against all three nodes.",

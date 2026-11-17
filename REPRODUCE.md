@@ -132,6 +132,11 @@ ALIBI_TLS_CERT=<path-to-concatenated-certs> ALIBI_PAYMENT_HASH=<64-hex> \
   node engine/bin/verifier.js > evidence/bundle.json
 ```
 
+Regtest keepalive: if nodes report `synced_to_chain: false` while their `block_height` already matches
+bitcoind and channels are active, LND's sync flag has gone stale. Mine one block
+(`generatetoaddress 1`) and wait ~8s; all three flip back to `true`. The verifier correctly fails
+closed on `node.synced` in that state — do not bypass it.
+
 The verifier fails closed: exit 2 on missing credentials, exit 1 on any failed check, exit 0 only
 when all 18 pass. The preimage is SHA-256-checked in memory and redacted before the bundle is written.
 No macaroon, cert, or preimage is included in the committed artifact.

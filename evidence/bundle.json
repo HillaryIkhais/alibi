@@ -1,6 +1,6 @@
 {
   "verifier": "alibi-independent-verifier/1.0",
-  "generated_at": "2026-11-17T16:21:25.200Z",
+  "generated_at": "2026-11-17T17:04:11.646Z",
   "network": "regtest",
   "payment_hash": "4750ca45cb46d9c7c24a1caae5b318164289ef4c77191f3437b7a163ddafbf66",
   "expected_amounts": {
@@ -12,17 +12,17 @@
   "nodes": {
     "alice": {
       "pubkey": "021e04514aa8bdf7a4847a34895c1ddcba1ecae6b68ec711415d48654933df0636",
-      "block_height": 116,
+      "block_height": 117,
       "synced_to_chain": true
     },
     "bob": {
       "pubkey": "02d45125566fdb32a2c2e1f9086bcdf48038f5b432c2f281a82ff42817e11599f6",
-      "block_height": 116,
+      "block_height": 117,
       "synced_to_chain": true
     },
     "carol": {
       "pubkey": "0343696695a044ed3dd174728b5d0987bb425447d2ca8dcf4de9d9a85b2a918baf",
-      "block_height": 116,
+      "block_height": 117,
       "synced_to_chain": true
     }
   },
@@ -42,7 +42,7 @@
       "id": "node.network",
       "description": "all three nodes on same chain",
       "status": "pass",
-      "detail": ",,"
+      "detail": "regtest,regtest,regtest"
     },
     {
       "id": "node.synced",
@@ -147,5 +147,5 @@
     "failed": 0
   },
   "trust_statement": "Independently executed, node-backed verification of a controlled regtest environment. Not a Bitcoin consensus proof and not a trustless attestation. Read-only credentials. No preimage, macaroon, or key material included.",
-  "checksum_sha256": "3897e7f0ca5c755c44f9d6a7da257f84266f54b3d64a013696944798e2bf1400"
+  "checksum_sha256": "23cd13d9ce7f34ee33429f9f6d5b4858ab5579ca1c6229ffa69250edd094267b"
 }

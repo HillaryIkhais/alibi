@@ -141,9 +141,13 @@ async function verify() {
   // --- Node liveness + network ---
   const infos = {};
   for (const [n, c] of Object.entries(nodes)) infos[n] = await c.getInfo();
+  // LND 0.21 getinfo no longer exposes genesis_hash, so compare the chain's
+  // network field instead. A missing field fails closed rather than passing
+  // vacuously on three undefined values.
+  const nodeNetworks = Object.values(infos).map(i => i.chains?.[0]?.network);
   check('node.network', 'all three nodes on same chain',
-    new Set(Object.values(infos).map(i => i.chains?.[0]?.genesis_hash)).size === 1,
-    Object.values(infos).map(i => i.chains?.[0]?.genesis_hash).join(','));
+    nodeNetworks.length === 3 && nodeNetworks.every(n => n === EXPECTED.network),
+    nodeNetworks.join(','));
   check('node.synced', 'all nodes synced to chain',
     Object.values(infos).every(i => i.synced_to_chain === true));
 
