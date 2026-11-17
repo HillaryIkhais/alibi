@@ -1,0 +1,151 @@
+{
+  "verifier": "alibi-independent-verifier/1.0",
+  "generated_at": "2026-11-17T16:21:25.200Z",
+  "network": "regtest",
+  "payment_hash": "4750ca45cb46d9c7c24a1caae5b318164289ef4c77191f3437b7a163ddafbf66",
+  "expected_amounts": {
+    "sale_msat": "100000000",
+    "commission_msat": "5000000",
+    "vendor_remainder_msat": "95000000",
+    "max_rate_ppm": 50000
+  },
+  "nodes": {
+    "alice": {
+      "pubkey": "021e04514aa8bdf7a4847a34895c1ddcba1ecae6b68ec711415d48654933df0636",
+      "block_height": 116,
+      "synced_to_chain": true
+    },
+    "bob": {
+      "pubkey": "02d45125566fdb32a2c2e1f9086bcdf48038f5b432c2f281a82ff42817e11599f6",
+      "block_height": 116,
+      "synced_to_chain": true
+    },
+    "carol": {
+      "pubkey": "0343696695a044ed3dd174728b5d0987bb425447d2ca8dcf4de9d9a85b2a918baf",
+      "block_height": 116,
+      "synced_to_chain": true
+    }
+  },
+  "invoice_states": {
+    "sale": {
+      "state": "SETTLED",
+      "amount_msat": "100000000"
+    },
+    "commission": {
+      "state": "SETTLED",
+      "amount_msat": "5000000"
+    }
+  },
+  "preimage_matches_hash": true,
+  "checks": [
+    {
+      "id": "node.network",
+      "description": "all three nodes on same chain",
+      "status": "pass",
+      "detail": ",,"
+    },
+    {
+      "id": "node.synced",
+      "description": "all nodes synced to chain",
+      "status": "pass"
+    },
+    {
+      "id": "alice.sale.exists",
+      "description": "sale invoice exists on vendor node",
+      "status": "pass"
+    },
+    {
+      "id": "alice.sale.hash",
+      "description": "sale invoice payment hash matches",
+      "status": "pass",
+      "detail": "R1DKRctG2cfCShyq5bMYFkKJ70x3GR80N7ehY92vv2Y="
+    },
+    {
+      "id": "alice.sale.amount",
+      "description": "sale invoice is 100,000,000 msat",
+      "status": "pass",
+      "detail": "got 100000000"
+    },
+    {
+      "id": "alice.sale.settled",
+      "description": "sale invoice settled",
+      "status": "pass",
+      "detail": "SETTLED"
+    },
+    {
+      "id": "alice.preimage.hash",
+      "description": "SHA256(preimage) == payment hash",
+      "status": "pass",
+      "detail": "true"
+    },
+    {
+      "id": "alice.sale.htlcs_finalized",
+      "description": "all incoming HTLCs settled",
+      "status": "pass",
+      "detail": "SETTLED"
+    },
+    {
+      "id": "bob.commission.exists",
+      "description": "commission invoice exists on marketplace node",
+      "status": "pass"
+    },
+    {
+      "id": "bob.commission.amount",
+      "description": "commission invoice is 5,000,000 msat",
+      "status": "pass",
+      "detail": "got 5000000"
+    },
+    {
+      "id": "bob.commission.settled",
+      "description": "commission invoice settled",
+      "status": "pass",
+      "detail": "SETTLED"
+    },
+    {
+      "id": "bob.commission.preimage",
+      "description": "commission preimage hashes to payment hash",
+      "status": "pass"
+    },
+    {
+      "id": "math.split",
+      "description": "sale == commission + vendor remainder",
+      "status": "pass",
+      "detail": "100000000 == 5000000 + 95000000"
+    },
+    {
+      "id": "math.rate",
+      "description": "commission / sale <= max_rate_ppm",
+      "status": "pass",
+      "detail": "50000 ppm"
+    },
+    {
+      "id": "carol.payment.exists",
+      "description": "buyer payment found on buyer node",
+      "status": "pass"
+    },
+    {
+      "id": "carol.payment.amount",
+      "description": "buyer paid 100,000,000 msat",
+      "status": "pass",
+      "detail": "got 100000000 msat (100000 sat)"
+    },
+    {
+      "id": "carol.payment.final",
+      "description": "buyer payment finalized (not pending)",
+      "status": "pass",
+      "detail": "SUCCEEDED"
+    },
+    {
+      "id": "carol.payment.single",
+      "description": "exactly one payment with this hash on buyer node",
+      "status": "pass"
+    }
+  ],
+  "summary": {
+    "total": 18,
+    "passed": 18,
+    "failed": 0
+  },
+  "trust_statement": "Independently executed, node-backed verification of a controlled regtest environment. Not a Bitcoin consensus proof and not a trustless attestation. Read-only credentials. No preimage, macaroon, or key material included.",
+  "checksum_sha256": "3897e7f0ca5c755c44f9d6a7da257f84266f54b3d64a013696944798e2bf1400"
+}

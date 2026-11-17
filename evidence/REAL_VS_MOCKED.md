@@ -14,16 +14,16 @@ This table is the canonical source of truth for what Alibi actually demonstrates
 | Channel-backup auditor | **VERIFIED (offline)** | 10 checks, real SHA-256 staleness logic | In-process mock LND REST server | `runs/.../auditor-stdout.txt` |
 | Cancellation / recovery invariants | **VERIFIED (SIM)** | Full state machine, 5 invariants, budget release | In-memory state; no real sats move | `runs/.../simulator-stdout.txt` |
 | No credentials in git history | **VERIFIED** | 1,675 historical blobs scanned, zero PEM keys / macaroons / seeds | `bitcoin:bitcoin` is a public regtest dev default | `runs/.../credential-scan.txt` |
-| Full live settlement verified on LND (18/18) | **NOT REPRODUCIBLE** | `verifier.js` is real, node-backed, and fails closed; three-node lab exists | **No bundle.json artifact.** Regtest nodes are stuck desynced (LND expects chain `ac3a47...`, bitcoind only has `1d8ef2...`); channels inactive; Bob/Carol lost history | none — see `claims.json` C10 |
+| Full live settlement verified on LND (18/18) | **VERIFIED (live regtest)** | Three real LND nodes on regtest; same-hash hold invoices on Alice (sale, 100,000 sats) and Bob (commission, 5,000 sats); Carol paid the sale, Alice paid the commission, both settled with the shared preimage; verifier queried node state with read-only macaroons | Controlled regtest cycle — node-state verification, not Bitcoin consensus or trustless attestation; preimage checked in memory and redacted; read-only credentials only | `bundle.json` (18/18, exit 0) — see `claims.json` C10 |
 | Durable budget ledger (SQLite) | **IMPLEMENTED, NOT VERIFIED** | Schema and atomic reservation code exist in `commission-service.js` | `better-sqlite3` unavailable in build environment; in-memory fallback loses state on restart | code inspection only |
 | Full NWC relay (NIP-44/NIP-47) | **NOT BUILT** | Method allowlist/blocklist HTTP server exists | No encryption, no signed Nostr events, no relay transport | n/a — future work |
 | Mainnet / testnet deployment | **NOT BUILT** | Regtest lab only | No public deployment | n/a — future work |
 
 ## What this means in one paragraph
 
-The **policy invariant is proven and mutation-verified** at the deterministic layer, and the
-surrounding recovery/audit machinery passes all offline suites. The **one headline claim that is not
-currently provable is the live 18/18 node-backed settlement**, because no verifier bundle was ever
-committed and the local regtest lab has drifted into a desynced state that cannot produce one
-without a full rebuild. Until that bundle exists and is regenerable, the README describes that check
-as **NOT REPRODUCIBLE**, not as passing.
+The **policy invariant is proven and mutation-verified** at the deterministic layer, the surrounding
+recovery/audit machinery passes all offline suites, and the **live 18/18 node-backed settlement is
+verified against three real LND nodes on regtest** (`bundle.json`, exit 0). The verifier queries node
+state directly with read-only credentials, checks the preimage SHA-256 in memory, and writes no
+preimage or key material. Scope limit: this is a controlled regtest cycle — node-state verification,
+not a Bitcoin consensus proof or a trustless attestation.

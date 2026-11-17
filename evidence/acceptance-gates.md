@@ -16,12 +16,13 @@ A gate is PASS only with a committed artifact and a command that regenerates it.
 | G10 | Credential hygiene | 0 keys/macaroons/seeds in history | `runs/.../credential-scan.txt` | PASS |
 | G11 | Evidence pinned | manifest with self-checksum regenerates | `manifest.json` | PASS |
 | G12 | Atomic budget under concurrency | 8 interleaved arrivals, no over-commit, 5/5 | `concurrency-results.json` | PASS |
-| G13 | Live 18/18 settlement | `bundle.json` with 18/18, exit 0, regenerable | **none** | **FAIL — not reproducible** |
+| G13 | Live 18/18 settlement | `bundle.json` with 18/18, exit 0, regenerable | `bundle.json` | **PASS** |
 
-**Definition of finished for the submission:** G1–G12 pass and G13 is either (a) made to pass with a
-committed, regenerable `bundle.json`, or (b) explicitly disclosed as not reproducible everywhere a
-number is quoted. The current submission takes path (b). It is honest, not finished on the live axis.
+**Definition of finished for the submission:** G1–G13 pass. G13 was closed by rebuilding the regtest
+lab from clean volumes with `harbor/lab/setup.sh`, executing a full same-hash hold-invoice settlement
+cycle across Alice/Bob/Carol, and regenerating `evidence/bundle.json` with the independent read-only
+verifier (18/18, exit 0). All 13 gates now have committed artifacts.
 
 ## Regeneration
-All gates regenerate via `REPRODUCE.md`. G12's restore procedure is `REPRODUCE.md` §7. The claim
-ledger with per-gate hashes is `evidence/claims.json`.
+All gates regenerate via `REPRODUCE.md`. G13's live-cycle restore procedure is `REPRODUCE.md` §7. The
+claim ledger with per-gate hashes is `evidence/claims.json`.

@@ -1,17 +1,17 @@
 {
   "suite": "alibi-evidence-manifest/1.0",
-  "frozen_at": "2026-11-17T14:14:07.003Z",
-  "artifact_count": 11,
+  "frozen_at": "2026-11-17T16:57:28.015Z",
+  "artifact_count": 12,
   "artifacts": [
     {
       "path": "evidence/REAL_VS_MOCKED.md",
-      "bytes": 3508,
-      "sha256": "d4a7a496b27721321d84b19e11d47e7afe24a165f4fe6fdb6250e5c5dd6d9c6e"
+      "bytes": 3757,
+      "sha256": "376bf2cf9a9d87b72b28dea09fe007b946982c4890629c60dc0eaeeaad22c4a5"
     },
     {
       "path": "evidence/acceptance-gates.md",
-      "bytes": 2059,
-      "sha256": "9625b7e86ebac890268618d262eaacf0770a05530ca2a211fd9b9d512f64f5d1"
+      "bytes": 2125,
+      "sha256": "b23e9e170c2fd8bb20b8230eb57f8bc43f8d5c2ed57cfde2cceaf472d9b34015"
     },
     {
       "path": "evidence/adversarial-results.json",
@@ -19,9 +19,14 @@
       "sha256": "c7137e12226790df3deb5c170f07ce3c2553afc509fe036c7cd4c2eef9f4ce62"
     },
     {
+      "path": "evidence/bundle.json",
+      "bytes": 4239,
+      "sha256": "50f994d5919da37721312ea2c8829066b62fb913f0e73bdad610fbea3e62ba2a"
+    },
+    {
       "path": "evidence/claims.json",
-      "bytes": 10055,
-      "sha256": "01c969e7297b29d7082ce271c59e003dc83728bf913671fb53f005bdb7238049"
+      "bytes": 10103,
+      "sha256": "ab911d42e1cbbc02f4f7baa0ffddd755f886417ef602e98a873abbe229c15ba9"
     },
     {
       "path": "evidence/concurrency-results.json",
@@ -59,5 +64,5 @@
       "sha256": "59b8a61f1f344d99b89df33614cfd63a50a831fff5a0756a3c189ec5f62a21c7"
     }
   ],
-  "sha256_of_manifest": "e4c7e322d6804bd7f2dfcef1ffff947e2cc8c23674546e00f4221b7dbdbee3d4"
+  "sha256_of_manifest": "050e0c6ea1ed417e400caecb7c3389ef7502bb7a679776f9063140326de8737c"
 }

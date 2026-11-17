@@ -136,22 +136,22 @@
     {
       "id": "C10",
       "claim": "A third-party verifier confirms the full Alice/Bob/Carol settlement (18/18) against live LND node state.",
-      "status": "NOT_REPRODUCIBLE",
+      "status": "VERIFIED",
       "layer": "live-integration",
       "mechanism": "engine/bin/verifier.js queries all three nodes with read-only macaroons; checks invoice existence/amount/hash/settlement, preimage SHA-256 in memory, arithmetic split, and buyer payment finality.",
-      "artifact": null,
-      "artifact_sha256": null,
+      "artifact": "evidence/bundle.json",
+      "artifact_sha256": "50f994d5919da37721312ea2c8829066b62fb913f0e73bdad610fbea3e62ba2a",
       "command": "node engine/bin/verifier.js > evidence/bundle.json (requires 3 live nodes, credentials, ALIBI_PAYMENT_HASH)",
       "expected": "summary {passed: 18, failed: 0}, exit 0, bundle.json with checksum.",
-      "why_not_reproducible": "No evidence/bundle.json exists. The regtest LND nodes are stuck at 'Waiting for chain backend to finish sync rev=ac3a47' while bitcoind's only tip is 1d8ef2... (height 243); the old chain is absent. All channels are inactive and Bob/Carol have no invoice/payment history. Regenerating requires a full teardown, wallet reset, channel reopen, and a from-scratch settlement cycle, which was not reliably reproducible here.",
-      "required_action": "Do NOT claim 18/18 in README/PRD. Restore the lab end-to-end, execute a complete cycle, and commit the resulting evidence/bundle.json before restoring the claim."
+      "regeneration": "Rebuilt the regtest lab from clean volumes with harbor/lab/setup.sh (bitcoind 32 wallet creation, IBD mining, channels, seed liquidity), created same-hash hold invoices on Alice (sale, 100000 sats) and Bob (commission, 5000 sats), Carol paid the sale, Alice paid the commission, both were settled with the shared preimage, then the verifier ran with read-only macaroons against all three nodes.",
+      "limit": "Controlled regtest cycle. Node-state verification, not a Bitcoin consensus proof or trustless attestation. The verifier holds read-only credentials and never receives the preimage."
     }
   ],
   "summary": {
     "total": 11,
-    "verified": 10,
+    "verified": 11,
     "partial": 0,
-    "not_reproducible": 1,
+    "not_reproducible": 0,
     "future": 0
   }
 }
