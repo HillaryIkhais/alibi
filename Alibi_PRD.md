@@ -172,7 +172,7 @@ README.md           pitch + proof + manual
 7. What is mocked? "SIM mode uses in-memory state (better-sqlite3 not in build env). Real mode uses LND read-only credentials."
 8. What is on mainnet/testnet? "Regtest only. Not mainnet. Not trustless. Funds are non-redeemable testnet/regtest sats."
 9. Which sponsor primitive is load-bearing? "The `make_commission_invoice` NWC method with corrected LND endpoints."
-10. How is this different from nearest project? "Wallet-side policy enforcement; 12/12 adversarial + 4/4 mutation-verified; base64-corrected REST. Live settlement verification is implemented but not currently reproduced."
+10. How is this different from nearest project? "Wallet-side policy enforcement; 12/12 adversarial + 4/4 mutation-verified; base64-corrected REST; and a live 18/18 node-backed settlement (`bundle.json`, exit 0)."
 11. Can the model be wrong here? "The policy engine is deterministic BigInt math; a blocked case is demonstrable."
 12. What did you deliberately not build? "Full NWC relay, multi-hop payments, SQLite durability, mainnet."
 13. What breaks at 1000x? "Single-channel payment paths; no automated budget renewal; in-memory state loss on restart."
