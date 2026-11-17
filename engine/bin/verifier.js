@@ -225,7 +225,7 @@ async function verify() {
   const bundle = {
     verifier: 'alibi-independent-verifier/1.0',
     generated_at: new Date().toISOString(),
-    network: infos.alice.chains?.[0]?.name || 'unknown',
+    network: infos.alice.chains?.[0]?.network || 'unknown',
     payment_hash: paymentHash,
     expected_amounts: {
       sale_msat: EXPECTED.sale_msat.toString(),
