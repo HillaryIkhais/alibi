@@ -27,8 +27,8 @@ African marketplaces (like Paystack's Nigerian project) need to collect commissi
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │   Buyer Wallet  │     │ Vendor Wallet   │     │ Marketplace     │
 │                 │     │ (Commission     │     │                 │
-│  Pay 105,000sats│────▶│  Validator)     │────▶│  Receive 5,000  │
-│  (Sale + Comm.) │     │  Enforces policy│     │   commission    │
+│  Pay 100,000sats│────▶│  Validator)     │────▶│  Receive 5,000  │
+│  (one invoice)  │     │  Enforces policy│     │   commission    │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
                                 │
                                 ▼

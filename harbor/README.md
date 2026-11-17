@@ -15,7 +15,7 @@ The NWC community has an open draft proposal for this mechanism: Commission Paym
 1. **Vendor approves a policy**: max 5% commission, only specific payee allowed, 10,000 sat budget
 2. **Marketplace requests a sale**: "100,000 sats item, take 5,000 commission"
 3. **Vendor wallet validates**: Rejects 20% commission, unauthorized payee, budget overrun
-4. **Buyer pays once**: Single 105,000 sat Lightning payment
+4. **Buyer pays once**: Single 100,000 sat Lightning payment (5,000 sat commission paid by vendor from proceeds)
 5. **Commission splits**: 100,000 sats to vendor, 5,000 sats to marketplace (same payment hash)
 6. **Outcome verified**: Both payments settle, evidence recorded
 
