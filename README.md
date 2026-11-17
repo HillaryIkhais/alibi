@@ -1,193 +1,188 @@
-# ALIBI — Commission Authority Without Wallet Access
+<div align="center">
 
-**An agent can be trusted with a commission. It cannot be trusted with a wallet.**
+# ALIBI
 
-A marketplace gets a narrow, revocable permission: request a commission-bound
-sale to one approved payee, within one policy. It never receives
-`pay_invoice`, `settle_hold_invoice`, or any general spending method. The
-vendor's wallet enforces the policy — not the marketplace's UI, not the
-marketplace's honesty.
+### Commission authority without wallet access. **A marketplace can earn a cut — it cannot spend your money.**
 
-**Invariant:** Authority can only narrow, never widen. A commission
-connection's effective authority at any moment is a subset of its initial
-grant; reserved budget cannot be double-spent; payment hashes cannot be
-replayed with different parameters.
+![tests](https://img.shields.io/badge/conformance-12%2F12-2FA46A)
+![mutation](https://img.shields.io/badge/guards%20load--bearing-4%2F4-2FA46A)
+![pipeline](https://img.shields.io/badge/recovery%20checks-34-2FA46A)
+![network](https://img.shields.io/badge/network-regtest-FFCC33)
+![standard](https://img.shields.io/badge/NWC%20draft-nwc%238-6f42c1)
 
-*Experimental reference implementation of the NWC Commission Payments draft
-([nwc#8](https://github.com/nostr-wallet-connect/nwc/issues/8)) — the draft
-is not an adopted standard. Regtest only. Not mainnet. Not trustless.*
+*Experimental reference implementation of the [NWC Commission Payments draft](https://github.com/nostr-wallet-connect/nwc/issues/8). The draft is not an adopted standard. Regtest only. Not mainnet. Not trustless.*
+
+</div>
 
 ---
 
-## Claim discipline
+## The failure, in one paragraph
 
-| Category | Meaning | Status in Alibi |
-|----------|---------|-----------------|
-| **Enforced** | Guaranteed by a mechanism | Policy engine, BigInt math, atomic budget reservation, duplicate-hash prevention, NWC method blocklist, corrected LND REST encoding |
-| **Demonstrated** | Shown in the demo | Full checkout cycle: seller approves → buyer pays → commission settled → seller receives earnings → revocation |
-| **Measured** | Reported with sample size | 12/12 adversarial tests pass; 18/18 verifier checks when full cycle executed |
-| **Future work** | Not built | Full NWC relay (NIP-44/NIP-47); multi-hop payment optimization; SQLite durability in build environment |
+An African freelancer who sells through a marketplace faces a bad choice: hand the platform their
+Lightning wallet (unsafe), let it take custody (unsafe), make the buyer pay twice (bad UX), or promise
+to pay a commission later (unreliable). **Alibi removes the trust.** The vendor grants a narrow,
+revocable permission — request one commission-bound sale, to one approved payee, within one budget.
+The vendor's wallet enforces the policy. The marketplace never receives `pay_invoice`,
+`settle_hold_invoice`, or any general spending method.
 
-Never let future work appear as live. Never let a measured claim appear as a guarantee.
-
----
-
-## Evidence table
-
-| Check | Result | Evidence |
-|-------|--------|----------|
-| 20% commission blocked | **VERIFIED** | `node engine/bin/adversarial-test.js` → 12/12 pass |
-| Unauthorized payee blocked | **VERIFIED** | same run |
-| Budget exhaustion blocked | **VERIFIED** | same run |
-| Sequential budget tracking | **VERIFIED** | same run (reservation-aware budget) |
-| Duplicate payment-hash blocked | **VERIFIED** | same run |
-| Integer money math (no floats) | **VERIFIED** | `CommissionPolicy` uses BigInt comparisons |
-| No credentials in reachable git history | **VERIFIED** | `.gitignore` denies `*.macaroon *.seed *.key *.cert *.pass` |
-| Full Alice→Bob→Carol transaction | **VERIFIED** | `engine/bin/verifier.js` — 18/18 checks pass against live regtest nodes; `NODE_TLS_REJECT_UNAUTHORIZED=0` |
-| Independent node-backed verifier | **VERIFIED** | Queries Alice/Bob/Carol read-only macaroons; 18/18 pass; fails closed without credentials |
-| NWC `make_commission_invoice` handler | **VERIFIED** | BOLT11 decoding, payment hash validation, payee check, budget enforcement, corrected LND endpoints |
-| Durable budget (SQLite, atomic) | **IMPLEMENTED, NOT VERIFIED** | SQLite schema in `commission-service.js`; `better-sqlite3` not installed in build environment; in-memory fallback loses state on restart |
-| Cancellation / recovery scenario | **VERIFIED** | `commission-flow-simulator.js` + live regtest demonstrate budget release on cancellation |
-
-**Honest headline:** Alibi has a fully implemented NWC Commission Payments draft with corrected LND REST endpoints, verified payment lifecycle on live regtest, and independently verified settlement. 18/18 verifier checks pass when the complete checkout cycle is executed. 12/12 adversarial conformance tests block unauthorized commissions, payees, budget exhaustion, and duplicate payment hashes.
+**Invariant:** a commission connection's authority can only narrow, never widen. Effective authority
+is always a subset of the initial grant; reserved budget cannot be double-spent; a payment hash cannot
+be replayed with different parameters.
 
 ---
 
-## The economics (corrected)
+## Verify the claim in 60 seconds (no credentials, no Docker)
 
-The buyer pays **one invoice of 100,000 sats**. Not 105,000.
-The commission (5,000 sats at 5%) is paid by the vendor out of the received
-amount. Vendor net before routing fees: **95,000 sats**.
+```bash
+node engine/bin/adversarial-test.js   # 12/12 — rate, payee, budget, replay guards
+node engine/bin/mutation-test.js      # 4/4 — each guard proven load-bearing
+node engine/bin/concurrency-test.js   # 5/5 — atomic budget under concurrent arrivals
+```
 
----
+Expected:
+```
+TEST RESULTS: 12 passed, 0 failed
+VENDOR POLICY ENFORCEMENT: VERIFIED
+...
+Mutation results: 4/4 guards confirmed load-bearing
+Byte-identical restore: YES
+...
+ATOMIC BUDGET RESERVATION: VERIFIED (single-process)
+```
 
-## The Problem
-
-African digital service vendors want marketplace distribution (like Nigerian designers on platforms) but refuse to give platforms unrestricted control of their Lightning wallets. Existing solutions either:
-
-- Take custody of funds (unsafe)
-- Grant broad wallet spending permissions (unsafe)
-- Require buyers to pay twice (bad UX)
-- Trust vendors to pay commissions later (unreliable)
-
----
-
-## The Solution
-
-**Alibi gives a Lightning marketplace conditional authority to collect an agreed commission without giving it general spending authority over the vendor's wallet.**
-
-The vendor wallet enforces policy. The marketplace can only request commission-bound sales to approved destinations within budget limits. All LND REST calls now use correct byte encoding (base64 where REST API expects base64, not hex). The `make_commission_invoice` handler decodes the marketplace's BOLT11 invoice, validates the payment hash, checks the payee against the allowed list, and enforces rate and budget checks atomically.
-
-All 12 adversarial conformance tests pass and 18/18 verifier checks pass when the complete checkout cycle is executed on live LND regtest.
+The second command is the one that matters. It disables each guard one at a time and **requires the
+matching test to fail**. A guard that still passes after being deleted is dead code; this harness
+proves none of them are. Full command set in [`REPRODUCE.md`](REPRODUCE.md). Judge path in
+[`JUDGES.md`](JUDGES.md).
 
 ---
 
-## How It Works (under the hood)
+## Evidence — every number carries a denominator and an artifact
 
-The NWC Commission Payments draft implementation (nwc#8) provides the engine underneath. Key specification requirements:
+| Claim | Result | Artifact / command |
+|---|---|---|
+| 5% cap: 20% and 5.01% rejected, 5% boundary accepted | **12/12** | `adversarial-results.json` · `node engine/bin/adversarial-test.js` |
+| Payee + marketplace allowlist enforced | **12/12** | same run |
+| Atomic budget, sequential reservations, exact fit | **12/12** | same run |
+| Duplicate payment hash rejected | **12/12** | same run |
+| Each guard is load-bearing (mutation test) | **4/4**, byte-identical restore | `mutation-results.json` · `node engine/bin/mutation-test.js` |
+| Atomic budget under concurrent arrivals | **5/5** (single-process) | `concurrency-results.json` · `node engine/bin/concurrency-test.js` |
+| HARBOR recovery/exit pipeline | **34 checks** | `runs/2026-11-17-offline/pipeline-stdout.txt` |
+| Channel-backup auditor (mock LND) | **10 checks** | `runs/2026-11-17-offline/auditor-stdout.txt` |
+| Cancellation invariants (SIM) | **FLOW COMPLETE**, 5 invariants | `runs/2026-11-17-offline/simulator-stdout.txt` |
+| No keys/macaroons/seeds in 1,675 history blobs | **0 found** | `runs/2026-11-17-offline/credential-scan.txt` |
+| **Live 18/18 node-backed settlement** | **NOT REPRODUCIBLE** | no `bundle.json`; see below |
 
-- `max_rate_ppm`: Maximum commission in parts per million (50000 = 5%)
-- `payees`: Array of approved commission destination pubkeys
-- `max_routing_fee`: Fee caps {base_msat, rate_ppm}
-- `budget_msat`: Total commission budget available
-- `commission = floor(sale_amount_msat * max_rate_ppm / 1,000,000)`
+All artifacts are SHA-256-pinned in [`evidence/manifest.json`](evidence/manifest.json) (regenerate:
+`node engine/bin/evidence-manifest.js`). Machine-readable ledger:
+[`evidence/claims.json`](evidence/claims.json).
 
-The marketplace can only request `make_commission_invoice` — it cannot call `pay_invoice`, `settle_hold_invoice`, or `create_connection`. The vendor wallet enforces all policy checks. All LND REST calls now use correct byte encoding.
-
-**Current status:** All LND endpoints corrected (AddHoldInvoice → `/v2/invoices/hodl` with base64 `payment_hash`; SendPaymentV2 → `/v2/router/send`; SettleInvoice → `/v2/invoices/settle` with base64 `preimage`; CancelInvoice → `/v2/invoices/cancel` with base64 `payment_hash`). `handleMakeCommissionInvoice` now correctly: receives `marketplace_pubkey` parameter; decodes the marketplace's BOLT11 commission invoice; validates the payment hash matches; checks the destination pubkey against the allowed payee list; enforces rate and budget checks with atomic reservation before creating the sale hold invoice.
-
----
-
-## Adversarial Defense
-
-| Attack | Defense |
-|--------|---------|
-| 20% commission request | `EXCEEDS_MAX_PERCENT` rejection |
-| Unauthorized payee | `UNAUTHORIZED_PAYEE` rejection |
-| Budget exhaustion | `BUDGET_EXCEEDED` rejection |
-| Duplicate payment hash | `DUPLICATE_HASH` rejection |
-| `pay_invoice` call | `METHOD_NOT_ALLOWED` rejection |
-
-12 conformance scenarios pass automatically.
-
----
-
-## Independent Verification
-
-A third-party verifier queries actual LND node state (not Alibi's database) to confirm:
-
-- Sale invoice exists with correct payment hash (100,000,000 msat)
-- Commission invoice exists with matching payment hash (5,000,000 msat)
-- Buyer payment of 100,000 sats SUCCEEDED on buyer node
-- Amounts reconcile: 100,000,000 == 5,000,000 + 95,000,000
-- Commission rate: 50,000 ppm = 5%
-- Preimage SHA256 matches payment hash (checked in memory, never written)
-- Vendor routing fee properly accounted for
-
-Exit code 0 when all checks pass, exit 2 when credentials missing.
-
-Verifier output writes `bundle.json` with SHA-256 checksum of the full bundle.
+> **The one claim we do not make right now.** There is no `evidence/bundle.json`, and the local
+> regtest nodes are desynced (LND expects chain `ac3a47…`, bitcoind's only tip is `1d8ef2…`; channels
+> inactive; Bob/Carol have no invoice history). The verifier itself is real and fails closed, but the
+> 18/18 result is **not evidenced**. We will not print a number a command cannot regenerate. Restore
+> procedure: [`REPRODUCE.md`](REPRODUCE.md) §7. Full disclosure:
+> [`evidence/REAL_VS_MOCKED.md`](evidence/REAL_VS_MOCKED.md).
 
 ---
 
-## Competition Differentiation
+## What is actually enforced (mechanism, not promise)
 
-| Feature | NobPay | Twese | SatsFarm | **Alibi** |
-|---------|--------|--------|----------|-----------|
-| Real Lightning | Simulated | Sandbox | Mutinynet | **Regtest** |
-| Commission permission | No | Hold invoices | No | **YES** |
-| Restricted NWC connection | No | Partial | No | **YES** |
-| Policy enforcement | Client-side | App-based | N/A | **Wallet-side** |
-| Failure recovery | N/A | Basic | N/A | **Implemented** |
-| Independent verifier | Browser | No | No | **External tool — 18/18** |
-| Adversarial conformance | 929 tests | Limited | N/A | **12 scenarios** |
+The vendor-side `CommissionPolicy` runs **before** any hold invoice is created:
 
----
+1. **Decode** the marketplace's BOLT11 commission invoice (`GET /v1/payreq/{pay_req}`).
+2. **Rate** — `commission_msat ≤ floor(sale × max_rate_ppm / 1e6)` → `EXCEEDS_MAX_PERCENT`.
+3. **Payee** — destination and marketplace pubkeys against allowlists → `UNAUTHORIZED_PAYEE` /
+   `UNAUTHORIZED_MARKETPLACE`.
+4. **Budget** — reserve `commission + routing fee` from the remaining pool atomically →
+   `BUDGET_EXCEEDED`.
+5. **Replay** — single-use payment hash registry → `DUPLICATE_HASH`.
 
-## Submission Checklist
-
-- [x] **Usefulness**: Marketplace commissions for African vendors (illustrative scenario)
-- [x] **Security**: Vendor policy enforcement, no broad wallet access (adversarial tests pass)
-- [ ] **UI**: Transaction Room interface (static HTML, not live)
-- [x] **MVP**: Full commission flow with regtest — executed and independently verified
-- [x] **Technical**: HTLC coordination, payment hash linking, corrected LND endpoints
-- [x] **Wallet**: Real Lightning flow with LND — executed on regtest
-- [x] **Conformance**: 12 adversarial tests pass (12/12)
-- [x] **Verification**: Independent state checking (verifier.js — 18/18 against live nodes)
-- [x] **Recovery**: Cancellation/restart handling demonstrated
+All money math is integer BigInt — no floats in a payout path. The marketplace's method allowlist is
+`get_info`, `lookup_invoice`, `make_commission_invoice`; `pay_invoice` and settlement methods are
+blocked at the server. LND REST byte encoding was corrected (base64 where the API requires base64).
 
 ---
 
-## Limitations & Future Work
+## The economics
 
-**Current limitations (specific, not vague):**
-
-- **Regtest only** — not mainnet, not trustless. Funds are non-redeemable testnet/regtest sats.
-- **No automated budget renewal** — budget is a fixed pool; renewal period is future work.
-- **Single-channel payment paths** — no multi-hop fee optimization.
-- **No SQLite durability** — `better-sqlite3` not installed in build environment; in-memory fallback loses state on restart.
-
-**Future improvements:**
-
-- Full NWC relay implementation (NIP-44 encryption, NIP-47 signed events, Nostr transport)
-- Multi-hop payment optimization
-- Automated budget renewal
-- SQLite durability in build environment
+The buyer pays **one invoice of 100,000 sats**. Not 105,000. The commission (5,000 sats at 5%) is paid
+by the vendor out of what was received. Vendor net before routing fees: **95,000 sats**.
+Reconciliation: `100,000 = 5,000 + 95,000`.
 
 ---
 
-## Q&A Prep
+## Honesty table
 
-| Question | Strong answer |
-|----------|---------------|
-| What if the model is wrong? | There is no model. The policy engine is deterministic BigInt math; a blocked case is demonstrable. |
-| What is actually enforced? | The invariant: authority can only narrow, never wider. Rate, payee, budget, duplicate-hash checks run at delegation time. Here are the 12 adversarial tests. |
-| How do you know verification is correct? | The verifier queries actual LND node state (read-only credentials), not Alibi's database. It fails closed (exit 2) without credentials. |
-| What is the boundary? | Regtest only. Single root (no multi-root reservation). Research informs decisions; it never determines payouts. |
-| What breaks in production? | Top risk: marketplace knows preimage before buyer pays (collusion risk). Mitigation: PTLCs (future work). Fallback: cancel commission, release sale. |
+Full version: [`evidence/REAL_VS_MOCKED.md`](evidence/REAL_VS_MOCKED.md).
+
+| Capability | Status |
+|---|---|
+| Policy invariant + mutation proof | **VERIFIED** |
+| Recovery / audit machinery (offline) | **VERIFIED** |
+| Cancellation invariants (SIM) | **VERIFIED** |
+| Credential hygiene | **VERIFIED** |
+| Live 18/18 settlement | **NOT REPRODUCIBLE** (no artifact) |
+| SQLite durability | **IMPLEMENTED, NOT VERIFIED** (`better-sqlite3` unavailable) |
+| Full NWC relay (NIP-44/47), mainnet | **NOT BUILT** |
 
 ---
 
-**Experimental implementation of the NWC Commission Payments draft (nwc#8). Regtest only. Not mainnet. Not trustless.**
+## Trust boundaries
 
-*"Commission authority without wallet access."*
+```
+Buyer (Carol)            Vendor wallet (Alice)              Marketplace (Bob)
+ pays one invoice  ──▶   • addHoldInvoice / settle   ◀──  make_commission_invoice
+ (verifier queries)      • CommissionPolicy (5 checks)      (no pay_invoice,
+                         • atomic budget reservation         no settle_hold_invoice)
+                         • SQLite / in-memory state
+                                ▲
+                          read-only macaroons ── independent verifier.js
+                          (fails closed; trusts nothing Alibi wrote)
+```
+
+The verifier queries the LND nodes directly, never Alibi's database. The preimage is SHA-256-checked
+in memory and redacted before any output.
+
+---
+
+## Known limits (stated before they are found)
+
+- **No live-settlement artifact today** — 18/18 is not claimed; see above.
+- **Regtest only** — no mainnet/testnet; non-redeemable test sats.
+- **Single-process atomicity** — no multi-root reservation.
+- **In-memory fallback** — no verified SQLite durability in this environment.
+- **Shared-preimage collusion risk** — the marketplace may learn the preimage before buyer payment;
+  PTLCs are future work; fallback is cancel-and-release.
+- **Static UI** — the Transaction Room screens are illustrative, not a live checkout frontend.
+
+---
+
+## Submitter checklist
+
+- [x] Usefulness: marketplace commissions for vendors (illustrative scenario)
+- [x] Security: vendor-side policy enforcement, no broad wallet access (12/12 + 4/4)
+- [ ] UI: static HTML only, not live
+- [x] MVP: commission policy + recovery flow, proven at the deterministic layer
+- [x] Technical: integer math, payment-hash linking, corrected LND REST encoding
+- [x] Conformance: 12/12 adversarial + 4/4 mutation
+- [x] Verification: node-backed verifier exists and fails closed (result not reproduced — disclosed)
+- [x] Recovery: cancellation invariants + audit pipeline proven offline
+- [x] Honesty: no number printed without a regenerable artifact
+
+---
+
+## Q&A
+
+| Question | Answer |
+|---|---|
+| What is actually enforced? | The invariant: authority only narrows. Rate, payee, budget, and replay checks run at delegation time. 12/12 conformance + 4/4 mutation proof. |
+| How do you know the tests aren't fake? | The mutation harness deletes each guard and requires the matching test to fail. Source restored byte-identical (SHA-256 recorded both times). |
+| What about the 18/18 verifier? | It is real and fails closed, but there is no artifact and the local lab is desynced. We do not claim it until `bundle.json` is committed and regenerable. |
+| What is mocked? | Auditor uses a mock LND; pipeline uses fixtures; simulator uses in-memory state. Each is labeled in `REAL_VS_MOCKED.md`. |
+| What breaks in production? | Shared-preimage collusion; single-process atomicity; no verified durability; regtest only. All disclosed. |
+| Is there a model in the payout path? | No. Deterministic BigInt math and allowlists. Any LLM output is documentation only, never a payment decision. |
+
+---
+
+*Experimental implementation of the NWC Commission Payments draft (nwc#8). Regtest only. Not mainnet. Not trustless.*

@@ -12,13 +12,13 @@ Score 0–2 per dimension. 2 = a skeptical judge would agree without explanation
 | 3 | Invariant | 2 | "Authority can only narrow, never widen" — one sentence, testable |
 | 4 | Architecture | 2 | Shared action contracts, deterministic BigInt policy, audit provenance, NWC method blocklist + LND endpoint corrections |
 | 5 | Completeness | 2 | Full loop including failure + recovery — transaction lifecycle implemented (hold invoice → payment → settlement → cancellation) |
-| 6 | Verification | 2 | Independent oracle (verifier.js) queries actual LND nodes; payment hash, amounts, fees, and preimage all checked; 18/18 when full cycle executed |
-| 7 | Evidence | 2 | Public state + digest + verify-yourself commands; all 18 verifier checks + SHA-256 checksum |
+| 6 | Verification | 1 | Independent node-backed verifier EXISTS and fails closed, but no `evidence/bundle.json` and lab desynced — 18/18 is NOT currently reproducible; deterministic layer is verified (12/12 + 4/4) |
+| 7 | Evidence | 2 | SHA-256-pinned artifacts (`manifest.json`), 12/12 conformance, 4/4 mutation, 34 pipeline, 10 auditor; verify-yourself commands in `REPRODUCE.md` |
 | 8 | Sponsor fit | 2 | NWC API is load-bearing — remove it and Alibi loses core value (L3 integration) |
 | 9 | Narrative | 2 | Problem → failure → proof → live link; honest SIM/IMPLEMENTED/VERIFIED labels |
 | 10 | Honesty | 2 | Specific limitations documented; no overclaiming; regtest labeled honestly |
 
-**Total: 20/20 — competitive to win.**
+**Total: 19/20 — competitive, with one disclosed gap (live settlement not currently reproduced).**
 
 ## What was fixed in this revision
 
@@ -46,11 +46,11 @@ The central promise is now proven:
 1. ✅ **Seller authorizes a specific marketplace** (5% commission, revocable via policy)
 2. ✅ **Buyer makes one Lightning payment** (100,000 sats, one invoice — `make_commission_invoice`)
 3. ✅ **Marketplace receives only its permitted commission** (5,000 sats — validated via BOLT11 decoding, payment hash match, budget reservation)
-4. ✅ **Seller receives the remainder** (95,000 sats before routing fees — verifier confirms 100,000 = 5,000 + 95,000)
-5. ✅ **Seller can revoke authorization** (`cancelSale` releases budget reservation)
-6. ✅ **Independent verifier confirms both payment legs** (18/18 checks: sale invoice, commission invoice, buyer payment, amounts, fees, preimage hash)
+4. ✅ **Seller receives the remainder** (95,000 sats before routing fees — arithmetic enforced in the policy/verifier design)
+5. ✅ **Seller can revoke authorization** (`cancelSale` releases budget reservation — proven in SIM mode)
+6. ⚠️ **Independent verifier EXISTS and fails closed** — but its live 18/18 result is NOT currently reproduced (no `bundle.json`; lab desynced). Policy layer is proven at 12/12 + 4/4.
 
-The product cycle is complete. The remaining work is protocol-level (NIP-44/NIP-47 authenticated NWC transport) and UI polish, not foundational correctness.
+The deterministic policy layer and recovery machinery are proven. The remaining work is the live settlement artifact (restore procedure in `REPRODUCE.md` §7), then protocol-level NIP-44/NIP-47 transport and UI polish. Foundational correctness of the invariant is established.
 
 ## Drey score history
 
@@ -58,11 +58,12 @@ The product cycle is complete. The remaining work is protocol-level (NIP-44/NIP-
 |----------|-------|-------------|
 | Initial (pre-pivot) | 10/20 | Infrastructure documented but not verified |
 | After first code pass | 20/20 | Premature — LND endpoints and commission semantics were defective |
-| **Current (after all fixes)** | **20/20** | All defects corrected; payment lifecycle verified end-to-end |
+| After proof phase (honest) | 19/20 | All code defects corrected; deterministic layer proven (12/12 + 4/4); live 18/18 disclosed as not reproduced |
 
 ## Next actions (if continuing)
 
-1. **Record demo video** — follow `docs/demo-script.md` (2–3 minutes), showing complete checkout cycle
+1. **Restore live settlement artifact** — `REPRODUCE.md` §7, then commit `evidence/bundle.json` and restore the 18/18 claim
+2. **Record demo video** — follow `docs/demo-script.md` (2–3 minutes, honest cut — no live-verification scene)
 2. **Test on fresh clone** — verify `docker compose` + setup + all 3 modules work from clean state  
 3. **Prepare Devpost submission** — README, video, evidence bundle, postmortem
 4. **Optional: NWC relay integration** — NIP-44 encryption, NIP-47 signed events (on top of verified foundation)

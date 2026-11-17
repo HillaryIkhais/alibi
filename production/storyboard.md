@@ -1,6 +1,12 @@
 # Alibi Checkout — Production Storyboard
 
-**Creative concept:** "Permission, not trust." A seller gives a marketplace one narrow permission — collect its agreed commission — and nothing else. The video shows the three checkout experiences (seller approval, buyer purchase, seller receipt) plus the authority test (20% rejected), all backed by independent verification on live LND regtest.
+> **HONESTY REVISION — READ FIRST.** Scenes that previously claimed "18/18 verified on live
+> regtest" or showed a "Verified on live LND regtest" status bar are **CUT / REWRITTEN** below. No
+> committed `evidence/bundle.json` exists and the local regtest lab is desynced. If a rendered video
+> contains those strings, it is stale and must not be submitted until re-rendered. The authoritative,
+> honest script is `docs/demo-script.md`; status source of truth is `evidence/REAL_VS_MOCKED.md`.
+
+**Creative concept:** "Permission, not trust." A seller gives a marketplace one narrow permission — collect its agreed commission — and nothing else. The video shows the three checkout experiences (seller approval, buyer purchase, seller receipt) plus the authority test (20% rejected) and mutation proof, all reproducible from deterministic tests.
 
 **Tone:** Calm, confident, conversational. Like a product designer explaining something worth paying attention to. No corporate hype, no AI-generated marketing language.
 
@@ -58,15 +64,15 @@
 
 ---
 
-## Scene 5 — Independent verification (0:52–1:08)
+## Scene 5 — Proof the guards are real (0:52–1:08) [REWRITTEN]
 
-**Visual:** Split screen. Left: the verifier output (JSON with 18 checks passing). Right: live LND node state showing sale SETTLED, commission SETTLED, amounts reconciled.
+**Visual:** Terminal capture of `node engine/bin/mutation-test.js`. Four guards, each disabled in a throwaway copy, each correlated test failing, then `Source SHA-256 before/after` identical.
 
-**Narration:** "This isn't just a promise. An independent verifier queried all three live LND nodes directly — sale settled, commission settled, preimage matches payment hash. 18 out of 18 checks pass."
+**Narration:** "This isn't just a promise. We delete each guard in turn — rate, payee, budget, replay — and require the matching test to fail. Four for four. The source file is restored byte-for-byte. The guards are real."
 
-**On-screen text:** "18/18 verified on live regtest"
+**On-screen text:** "4/4 guards load-bearing · byte-identical restore"
 
-**Motion:** Checks tick off green one by one in the JSON output.
+**Motion:** Each mutant line lands, its FAIL appears, then the restore hash matches.
 
 ---
 
@@ -84,7 +90,7 @@
 
 ## Scene 7 — Close (1:20–1:30)
 
-**Visual:** Return to full product page. Sidebar + main view together. Status bar: "Verified on live LND regtest · 18/18 checks pass." Repository URL appears.
+**Visual:** Return to full product page. Sidebar + main view together. Status bar (verbatim, honest): "Policy verified 12/12 · guards 4/4 · SIM settlement · regtest." Repository URL appears.
 
 **Narration:** "Marketplaces can collect their fee. They cannot touch the wallet it came from. That's Alibi Checkout."
 
