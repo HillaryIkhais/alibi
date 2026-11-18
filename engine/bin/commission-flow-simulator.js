@@ -72,7 +72,7 @@ class FlowSimulator {
 
     this.state.aliceBalanceMsat -= commissionMsat;
     this.state.bobBalanceMsat += commissionMsat;
-    this.svc.policy.commitSpent(this.paymentHash, commissionMsat);
+    this.svc.policy.commitSpent(this.paymentHash);
 
     return { success: true, validation, routingFeeMsat: Number(routingFeeMsat) };
   }
