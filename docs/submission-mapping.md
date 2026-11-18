@@ -13,7 +13,7 @@ fields BEFORE the final day; do not invent them.
 | What it does | Configure policy → `make_commission_invoice` → atomic reservation → one buyer invoice → commission to approved payee → vendor keeps 95% → cancel releases. | README "mechanism" |
 | How it works | Rate/payee/budget/replay checks before hold-invoice creation; restricted NWC method set; node-backed verifier. | README, `THREAT_MODEL.md` |
 | Sponsor usage | `make_commission_invoice` (NWC draft nwc#8) is load-bearing in `commission-service.js` / `nwc-server.js`. **Confirm event sponsor first — if it requires a different chain integration, this mapping is invalid (red-team R1).** | README, `DECISIONS.md` D1 |
-| What is real | Policy layer 12/12 + 4/4 + 5/5 + recovery 34/10 + credential hygiene; live 18/18 node-backed settlement VERIFIED on regtest (`bundle.json`, exit 0). | `evidence/REAL_VS_MOCKED.md` |
+| What is real | Policy layer 14/14 + 4/4 + 5/5 + recovery 34/10 + credential hygiene; live 18/18 node-backed settlement VERIFIED on regtest (`bundle.json`, exit 0). | `evidence/REAL_VS_MOCKED.md` |
 | Demo URL | [NOT DEPLOYED — static build of `interface/` can be hosted] | deploy |
 | Video URL | [NOT YET RENDERED — follow `docs/demo-script.md`, honest cut] | video |
 | Repo URL | https://github.com/HillaryIkhais/alibi (commit evidence and freeze before submitting) | git |

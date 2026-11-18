@@ -16,12 +16,13 @@ hold invoice; refuse duplicates by payment hash.
 **Why:** A check-then-create race could over-commit budget. The conformance suite includes a
 sequential-reservation check and the mutation harness proves the budget guard is load-bearing.
 
-## D4 — Self-contained conformance suite + mutation proof
-**Decision:** `adversarial-test.js` defines its own policy copy; `mutation-test.js` proves each guard
-is load-bearing and records byte-identical restoration.
-**Why:** A suite that imports the exact production function could pass even if that function's guard
-were dead. The mutation harness is the defence against "green tests that cannot fail." Honest limit:
-the two policy copies are documented as matching, not mechanically identical.
+## D4 — Production policy under test + mutation proof
+**Decision:** `adversarial-test.js` imports the PRODUCTION `CommissionPolicy` from
+`commission-service.js` — there is no local copy. `mutation-test.js` disables guards in a throwaway
+copy of that same production file and records byte-identical restoration of the working tree source.
+**Why:** A self-defined policy copy can pass its own suite while the shipped service stays broken
+(this happened: the production LND adapter had wrong field names while a duplicated policy was green).
+Importing production removes the drift; mutation is still the defence against guards that cannot fail.
 
 ## D5 — Verifier reads node state, not app state
 **Decision:** `verifier.js` uses read-only macaroons, queries all three LND nodes, hashes the preimage
@@ -49,11 +50,11 @@ the time, and the restoration is equally evidence-driven. Restore procedure: `RE
 **Decision:** Removed `evidence/` from `.gitignore`; kept `*.macaroon`, `*.seed`, `*.key`, `*.cert`,
 `data/*.pass`, `*.log` blocked.
 **Why:** Proof artifacts must be visible to judges; credentials must never be. History scan confirms
-zero PEM keys, macaroons, or seeds across 1,675 blobs.
+zero PEM keys, macaroons, or seeds across 1,664 reachable blobs.
 
 ## D9 — Correct stale numbers
 **Decision:** Reconcile the "buyer pays 105,000 sats" line in `harbor/README.md` and the "8/8" line in
-`docs/scorecard.md` with the authoritative 100,000 sats and 12/12.
+`docs/scorecard.md` with the authoritative 100,000 sats and 14/14.
 **Why:** Three surfaces disagreeing on the headline numbers is exactly what a judge uses to doubt
 everything else. One record, three surfaces.
 
@@ -61,3 +62,21 @@ everything else. One record, three surfaces.
 Full NWC relay (NIP-44/NIP-47), SQLite durability in the build environment, multi-hop fee
 optimization, multi-root reservation, and mainnet deployment are all deliberately out of scope. They
 are listed as future work, never as demonstrated.
+
+## D11 — Verify the outgoing payment before releasing the buyer's HTLC
+**Decision:** `settleSale()` queries the vendor node's durable outgoing-payment record
+(`ListPayments`; `TrackPaymentV2` only serves in-flight payments) and requires `SUCCEEDED`, matching
+hash/preimage and an in-policy actual fee before calling `SettleInvoice`. The production flow
+harness proves the negative case: with no outgoing payment, settlement is refused even though the
+correct preimage is held.
+**Why:** The preimage alone does not prove the vendor paid the marketplace. Possession of the
+preimage is expected from the shared-hash protocol; releasing the buyer first would let the vendor
+keep the commission. The node is the only independent source of truth for the outgoing leg.
+
+## D12 — Two identities, and fail closed on unverified transport
+**Decision:** `HARBOR_MARKETPLACE_PUBKEY` (who may call) and `HARBOR_COMMISSION_PAYEE_PUBKEY` (where
+the Lightning invoice pays) are separate policy fields. `handleNip47()` refuses unsigned/unencrypted
+envelopes with `TRANSPORT_NOT_VERIFIED` instead of accepting a claimed pubkey from request JSON.
+**Why:** Treating one pubkey as both caller and destination lets an attacker authorize their own
+payee. With no Nostr/secp dependency in the build, faking event verification would be a lie; failing
+closed is honest and keeps the authority boundary testable (`authority-results.json`, 7/7).

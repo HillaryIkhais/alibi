@@ -90,7 +90,7 @@
 
 ## Scene 7 — Close (1:20–1:30)
 
-**Visual:** Return to full product page. Sidebar + main view together. Status bar (verbatim, honest): "Policy verified 12/12 · guards 4/4 · SIM settlement · regtest." Repository URL appears.
+**Visual:** Return to full product page. Sidebar + main view together. Status bar (verbatim, honest): "Policy verified 14/14 · guards 4/4 · SIM settlement · regtest." Repository URL appears.
 
 **Narration:** "Marketplaces can collect their fee. They cannot touch the wallet it came from. That's Alibi Checkout."
 

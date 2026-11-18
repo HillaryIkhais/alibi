@@ -15,7 +15,7 @@ without a mechanism that enforces limits at request time. Today, marketplaces
 trust vendors to pay commissions later (unreliable) or grant broad wallet
 access (unsafe). We enforce "commission authority can only narrow, never
 widen" with BigInt policy checks, atomic budget reservation, and duplicate-hash
-prevention at delegation time, and prove it with 12/12 adversarial tests plus
+prevention at delegation time, and prove it with 14/14 adversarial tests plus
 an independent verifier that queries actual LND node state.
 ```
 
@@ -34,7 +34,7 @@ an independent verifier that queries actual LND node state.
 3. **The break:** Marketplace requests 20% commission, unauthorized payee,
    budget overdraw, or duplicate hash.
 4. **The catch:** CommissionPolicy blocks each with a reason code;
-   adversarial tests assert 12/12 blocks.
+   adversarial tests assert 14/14 blocks.
 5. **The repair/verify:** Marketplace cancels its commission hold invoice;
    vendor releases the buyer's held sale only after outgoing payment resolves
    as failed; budget reservation returns.
@@ -67,5 +67,5 @@ an independent verifier that queries actual LND node state.
 |----------|---------|--------|
 | Enforced | Guaranteed by mechanism | Policy engine, BigInt math, budget reservation |
 | Demonstrated | Shown in demo | Simulator (SIM mode), console output |
-| Measured | Reported with sample size | 12/12 adversarial tests |
+| Measured | Reported with sample size | 14/14 adversarial tests |
 | Future work | Not built | Live LND transaction, SQLite durability |

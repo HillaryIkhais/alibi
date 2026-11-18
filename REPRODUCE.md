@@ -7,7 +7,7 @@ produce the stated output, the claim is false — trust the command, not the pro
 - Node.js 18+ (BigInt, `node:` built-ins)
 - Docker + Docker Compose (only for the optional live regtest lab)
 
-## 1. Policy conformance — 12/12 (no credentials, no Docker)
+## 1. Policy conformance — 14/14 (no credentials, no Docker)
 
 ```bash
 node engine/bin/adversarial-test.js
@@ -15,12 +15,14 @@ node engine/bin/adversarial-test.js
 
 Expected tail:
 ```
-TEST RESULTS: 12 passed, 0 failed
-VENDOR POLICY ENFORCEMENT: VERIFIED
+TEST RESULTS: 14 passed, 0 failed
+VENDOR POLICY ENFORCEMENT: VERIFIED (production code)
 ```
-Also writes `evidence/adversarial-results.json` with a `checksum_sha256`. Covers: 20% and 5.01%
-rejected, 5% boundary accepted, unauthorized marketplace/payee rejected, budget exhaustion,
-sequential reservation reduction, exact-fit acceptance, duplicate hash rejected.
+The suite `require()`s the PRODUCTION `CommissionPolicy` from `commission-service.js`; there is no
+duplicated policy class. Also writes `evidence/adversarial-results.json` with a `checksum_sha256`.
+Covers: 20% and 5.01% rejected, 5% boundary accepted, unauthorized marketplace/payee rejected,
+budget exhaustion, sequential reservation reduction, exact-fit acceptance, reserved routing fee
+counted against budget, duplicate hash rejected.
 
 ## 2. Mutation proof — 4/4 guards load-bearing
 
@@ -33,9 +35,21 @@ Expected tail:
 Mutation results: 4/4 guards confirmed load-bearing
 Byte-identical restore: YES
 ```
-Writes `evidence/mutation-results.json`. Each guard is disabled in a throwaway copy; the correlated
-test must FAIL. The authoritative `adversarial-test.js` is restored byte-for-byte (SHA-256 recorded
-before and after).
+Writes `evidence/mutation-results.json`. Each guard is disabled in a throwaway copy of the PRODUCTION
+`commission-service.js`; the correlated test must FAIL. The working-tree source is never modified and
+is proven byte-identical afterward (SHA-256 recorded before and after).
+
+## 2a. NWC authority boundary — 7/7 (no credentials, no Docker)
+
+```bash
+node engine/bin/authority-test.js
+```
+
+Expected: `RESULT: 7 passed, 0 failed`. Proves unapproved callers are blocked on both NWC paths, the
+authenticated pubkey is threaded into the handler instead of being read from request params,
+`pay_invoice` stays blocked, and an approved-but-unsigned NIP-47 envelope is refused with
+`TRANSPORT_NOT_VERIFIED` (401) rather than accepted as verified. Writes
+`evidence/authority-results.json`. Full NIP-44/BIP-340 verification is NOT implemented.
 
 ## 2b. Atomic budget under concurrency — 5 checks
 
@@ -106,18 +120,37 @@ cd ..
 to exit initial block download, funds all three LND wallets, opens Alice↔Bob and Bob↔Carol channels,
 and seeds outbound liquidity with two invoice payments so the buyer can route through Bob.
 
-### 7b. Execute one full settlement cycle for a known hash
+### 7b. Execute one full settlement cycle through the PRODUCTION service — 14/14
 
-Generate `PREIMAGE` (32 random bytes) and `HASH = SHA256(PREIMAGE)`. Then, with `lncli` pointed at each
-node's custom RPC port (Alice `10029`, Bob `10030`, Carol `10031`):
+The authoritative cycle driver is `engine/bin/production-flow.js`. It calls the real
+`CommissionService` (hold invoice creation, `payCommission`, `settleSale`, `reconcile` code paths),
+not a duplicated policy class, and asserts the central invariant: settlement is refused before the
+outgoing commission payment is verified on the vendor node.
 
-1. Alice (vendor): `addholdinvoice --amt 100000 $HASH` → sale BOLT11.
-2. Bob (marketplace): `addholdinvoice --amt 5000 $HASH` → commission BOLT11 (same hash).
-3. Carol (buyer): `payinvoice --pay_req=<sale BOLT11> --force` → HTLC held at Alice (`ACCEPTED`).
-4. Alice: `payinvoice --pay_req=<commission BOLT11> --force` → HTLC held at Bob (`ACCEPTED`). Steps 3
-   and 4 block until settlement; run step 4 in the background.
-5. Bob: `settleinvoice $PREIMAGE`; Alice: `settleinvoice $PREIMAGE` → both invoices `SETTLED`, both
-   payments `SUCCEEDED`.
+```bash
+# Credentials live in a temp dir outside the repo; never commit them.
+HARBOR_LND_REST_URL=https://127.0.0.1:10039 \
+HARBOR_LND_MACAROON=<alice-admin-macaroon-hex> \
+HARBOR_LND_TLS_CERT=<alice-tls-cert-path> \
+HARBOR_MARKETPLACE_PUBKEY=<bob-identity-pubkey> \
+HARBOR_COMMISSION_PAYEE_PUBKEY=<bob-identity-pubkey> \
+  node engine/bin/production-flow.js
+```
+
+Expected: `RESULT: 14/14 production stages passed`, exit 0. It writes
+`evidence/production-flow.json` (no preimage or credentials) containing the authoritative
+`payment_hash`, the negative premature-settle assertion, the verified outgoing-payment result, and
+final node states. Use that hash as `ALIBI_PAYMENT_HASH` in §7c.
+
+If channel liquidity has drifted after repeated runs, re-seed both channels with small payments before
+running (Bob→Carol and Alice→Bob), and mine a block if `synced_to_chain` is false (see §7c).
+
+Manual equivalent (for diagnosis only, not the proof artifact): generate `PREIMAGE` (32 random bytes)
+and `HASH = SHA256(PREIMAGE)`, then with `lncli` on each node's RPC port (Alice `10029`, Bob `10030`,
+Carol `10031`): Bob `addholdinvoice --amt 5000 $HASH` → commission BOLT11; call the production handler
+`make_commission_invoice` → sale BOLT11; Carol `payinvoice --pay_req=<sale> --force` → HTLC held at
+Alice (`ACCEPTED`); call production `payCommission` in the background; Bob `settleinvoice $PREIMAGE`;
+then production `settleSale` verifies node state before releasing the buyer.
 
 ### 7c. Run the independent verifier
 

@@ -31,10 +31,10 @@ credible sponsor-prize path — fix the event mapping before submitting.
 2. **Why has nobody fixed it?** The NWC Commission Payments draft is unadopted and LND REST byte encoding (base64 vs hex) is easy to get wrong; six such defects were found and corrected. → `DECISIONS.md` D1, D7.
 3. **The invariant?** Authority can only narrow, never widen — effective authority is always a subset of the grant. → `THREAT_MODEL.md`.
 4. **Holding under concurrency?** Eight interleaved arrivals at a 9-unit budget yield exactly 3 approvals, committed=9, no double reserve. → `concurrency-results.json`, `concurrency-test.js`.
-5. **Holding under attack?** 12 adversarial cases all blocked; mutation harness proves all 4 guards are load-bearing. → `adversarial-results.json`, `mutation-results.json`.
+5. **Holding under attack?** 14 adversarial cases all blocked; mutation harness proves all 4 guards are load-bearing. → `adversarial-results.json`, `mutation-results.json`.
 6. **Timeout / partial failure?** Cancellation releases the reservation; buyer's held payment is released only after the outgoing payment resolves. Uncertain states are reconciled from LND state, not app state. → `simulator-stdout.txt`, `reconcile()`.
 7. **What is mocked, why?** Auditor uses a mock LND and pipeline uses fixtures because no stable live chain was available; each is labeled. → `REAL_VS_MOCKED.md`.
-8. **Testnet/mainnet, with a hash?** Regtest only, no mainnet. The live settlement hash is `4750ca45cb46d9c7c24a1caae5b318164289ef4c77191f3437b7a163ddafbf66`, committed in `bundle.json`. → `REAL_VS_MOCKED.md`, `evidence/bundle.json`.
+8. **Testnet/mainnet, with a hash?** Regtest only, no mainnet. The live settlement hash is `0c3104c35224eb97bfb99af6d86e8d3cb9445b9f524080bf5f29aef87cd6c0c4`, committed in `bundle.json`. → `REAL_VS_MOCKED.md`, `evidence/bundle.json`.
 9. **Load-bearing sponsor primitive?** `make_commission_invoice` in `commission-service.js` / `nwc-server.js` — remove it and the product has no reason to exist. → `README` mechanism section.
 10. **Different from nearest project?** NobPay/Twese/SatsFarm lack wallet-side commission policy; Alibi enforces it at the vendor wallet with restricted NWC methods. → `README` (note: their exact test counts are not independently verified here — see R4).
 11. **Can the model be wrong?** No model is in the payout path; commission is integer BigInt math and authorization is allowlist+cap checks. → `THREAT_MODEL.md`.
@@ -54,20 +54,20 @@ credible sponsor-prize path — fix the event mapping before submitting.
 |---|---|---|---|
 | R1 | **HIGH** | Event/sponsor/track unconfirmed. Original PRD asserted "Celo Builders Hackathon — Marketplace Track — 2026-11-23" with no artifact. If Celo is the sponsor, there is zero Celo integration — sponsor-fit score collapses. | PRD line corrected to UNCONFIRMED. **Action: fill from the official submission page before submitting; if the sponsor requires chain integration, this entry is not a fit and must be reframed or withdrawn from that prize.** |
 | R2 | ~~HIGH~~ **CLOSED** | Live 18/18 claim previously had no `bundle.json`; a prior video/storyboard/UI said "Verified on live LND regtest · 18/18". | Regtest lab rebuilt from clean volumes; full same-hash settlement cycle executed; `evidence/bundle.json` regenerated (18/18, exit 0). Claims restored across README, PRD, demo script, storyboard, UI, Drey scorecard. `REPRODUCE.md` §7 has the procedure. Any pre-existing rendered video with stale "not reproduced" strings must be re-rendered. |
-| R3 | MEDIUM | Test count "12/12" appears in `docs/scorecard.md` as "8/8" historically and comparison table cites rivals' "929 tests". | Stale 8/8 fixed to 12/12. Rival counts are unverified — remove or label as "as claimed by their authors" before final submission. |
-| R4 | MEDIUM | Conformance suite defines its own policy copy rather than importing the production function; a matching-copy bug could hide a production defect. | Disclosed as an explicit limit in `claims.json` C05 and `REAL_VS_MOCKED.md`; mutation harness mitigates the "green test that can't fail" risk. A stronger fix (import production policy) is future work. |
+| R3 | MEDIUM | Test count "14/14" appears in `docs/scorecard.md` as "8/8" historically and comparison table cites rivals' "929 tests". | Stale 8/8 fixed to 14/14. Rival counts are unverified — remove or label as "as claimed by their authors" before final submission. |
+| R4 | ~~MEDIUM~~ **CLOSED** | Conformance suite defined its own policy copy rather than importing the production function; a matching-copy bug could hide a production defect (it did: production LND field names were wrong while the copy stayed green). | `adversarial-test.js` now imports the production `CommissionPolicy`; `mutation-test.js` mutates the production `commission-service.js`. Production service itself is exercised end-to-end by `production-flow.js` (14/14). `claims.json` C05/C13 and `REAL_VS_MOCKED.md` updated. |
 | R5 | MEDIUM | No hosted demo / rendered video; judge cannot click a live link. | Disclosed in Presentation score. Demo script is honest and reproducible; host a static build of `interface/` before submission if time allows. |
 | R6 | LOW | `docs/scorecard.md` "TLS verification not disabled by default" — verifier.js respects `NODE_TLS_REJECT_UNAUTHORIZED=0`. | Currently true by default (strict TLS with pinned cert); the escape hatch is explicit and documented. No change. |
 | R7 | LOW | Repo has duplicate older test/service copies (`engine/adversarial-test.js`, `harbor/engine/bin/*`) with older numbers. | Authoritative paths are documented as `engine/bin/*`; duplicates are legacy snapshots. Consider deleting before submission to remove judge confusion (not done — user work, left intact). |
 
-R2 is closed; R1 and R3 have concrete actions. R4/R5 remain disclosed.
+R2 and R4 are closed; R1 and R3 have concrete actions. R5 remains disclosed.
 
 ## 4. Binary pre-submission checklist
 
 **Mechanism**
 - [x] Invariant stated in one sentence and enforced in one place (`CommissionPolicy`).
-- [x] Real integration completed; live settlement identifier `4750ca45...bf66` committed in `evidence/bundle.json` (18/18, exit 0).
-- [x] Concurrency, replay, revocation covered by tests that can fail (5/5, 12/12, SIM).
+- [x] Real integration completed; live settlement identifier `0c3104c3...6c0c4` committed in `evidence/bundle.json` and `evidence/production-flow.json` (18/18 verifier, 14/14 production stages, exit 0).
+- [x] Concurrency, replay, revocation covered by tests that can fail (5/5, 14/14, 4/4, 7/7, SIM, 14/14 live production).
 - [x] Uncertain outcomes are a state, reconciled from source of truth (`reconcile()` + LND).
 - [x] No model in the decision path; deterministic BigInt math.
 
@@ -75,7 +75,7 @@ R2 is closed; R1 and R3 have concrete actions. R4/R5 remain disclosed.
 - [x] One command reproduces the headline claim (`node engine/bin/adversarial-test.js`).
 - [x] Evidence folder: claim → mechanism → artifact → command (`evidence/claims.json`, `manifest.json`).
 - [x] Honesty table + known limits (`REAL_VS_MOCKED.md`, `THREAT_MODEL.md`).
-- [x] Test counts match actual output (12/12, 4/4, 5/5, 34, 10 regenerated this session).
+- [x] Test counts match actual output (14/14 conformance, 4/4 production mutation, 7/7 authority, 5/5 concurrency, 14/14 live production, 18/18 verifier, 34 pipeline, 10 auditor).
 - [x] Clean-clone reproduction of the live lab verified this session — three consecutive `down -v && up -d && lab/setup.sh` rebuilds produced synced nodes, active channels, and successful seed payments (G13 evidence).
 - [x] Frozen verified run exists (`evidence/manifest.json` with self-checksum; artifacts committed).
 

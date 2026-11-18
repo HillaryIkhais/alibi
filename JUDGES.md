@@ -8,7 +8,7 @@ You do not need to trust the README. Run these in order. Each maps to a committe
 node engine/bin/adversarial-test.js
 ```
 
-You should see `TEST RESULTS: 12 passed, 0 failed` and `VENDOR POLICY ENFORCEMENT: VERIFIED`.
+You should see `TEST RESULTS: 14 passed, 0 failed` and `VENDOR POLICY ENFORCEMENT: VERIFIED`.
 This is the core claim: a marketplace cannot widen its commission authority beyond the vendor's
 policy. A 20% request, an unauthorized payee, an exhausted budget, and a replayed hash are all refused.
 

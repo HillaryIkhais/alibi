@@ -43,7 +43,7 @@ Voiceover, timed to the checks landing:
 > asked for 20% against a 5% limit — blocked. An unapproved payee — blocked.
 > A replayed hash — blocked. Twelve for twelve."
 
-Point at `TEST RESULTS: 12 passed, 0 failed`.
+Point at `TEST RESULTS: 14 passed, 0 failed`.
 
 > "Then we attack the tests themselves. Each guard is deleted in turn, and
 > the matching test is required to fail. Four for four — the guards are
@@ -132,7 +132,7 @@ Voiceover:
 
 Repository URL. One line, verbatim:
 
-*"Experimental NWC Commission Payments draft. Regtest. Policy 12/12 + 4/4;
+*"Experimental NWC Commission Payments draft. Regtest. Policy 14/14 + 4/4;
 concurrency 5/5; live settlement 18/18 (`bundle.json`). Not mainnet, not
 trustless."*
 
@@ -147,7 +147,7 @@ trustless."*
 
 ## Capture checklist
 
-- [ ] `adversarial-test.js` captured fresh (12/12 pass)
+- [ ] `adversarial-test.js` captured fresh (14/14 pass)
 - [ ] `mutation-test.js` captured fresh (4/4, byte-identical restore)
 - [ ] `concurrency-test.js` captured fresh (5/5, no over-commit)
 - [ ] `commission-flow-simulator.js` shows FLOW COMPLETE + cancellation invariants

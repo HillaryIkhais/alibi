@@ -37,7 +37,7 @@ Run on 2026-11-14. Re-run after each gate closes.
 
 | # | Point | Status | Evidence |
 |---|---|---|---|
-| 9 | Policy enforced wallet-side, not UI-side | VERIFIED | `engine/bin/adversarial-test.js` 12/12 pass |
+| 9 | Policy enforced wallet-side, not UI-side | VERIFIED | `engine/bin/adversarial-test.js` 14/14 pass |
 | 10 | 20% commission blocked | VERIFIED | Test 1 |
 | 11 | Unauthorized payee blocked | VERIFIED | Test 3 |
 | 12 | Budget exhaustion blocked | VERIFIED | Test 5 |

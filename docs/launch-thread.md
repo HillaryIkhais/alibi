@@ -16,7 +16,7 @@ Alibi lets a vendor grant a Lightning marketplace one narrow, revocable permissi
 Configure the policy → marketplace calls `make_commission_invoice` → wallet validates and reserves → buyer pays one invoice → commission settles to the approved payee → vendor keeps the remainder → cancel releases the reservation.
 
 **4/ The verified run**
-Real terminal output: `node engine/bin/adversarial-test.js` → `TEST RESULTS: 12 passed, 0 failed`. `node engine/bin/mutation-test.js` → `4/4 guards confirmed load-bearing`, source restored byte-identical. `node engine/bin/concurrency-test.js` → `5/5`, eight interleaved arrivals, budget for three, exactly three approved. Every artifact is SHA-256-pinned in `evidence/manifest.json`.
+Real terminal output: `node engine/bin/adversarial-test.js` → `TEST RESULTS: 14 passed, 0 failed`. `node engine/bin/mutation-test.js` → `4/4 guards confirmed load-bearing`, source restored byte-identical. `node engine/bin/concurrency-test.js` → `5/5`, eight interleaved arrivals, budget for three, exactly three approved. Every artifact is SHA-256-pinned in `evidence/manifest.json`.
 
 **5/ The mechanism**
 The hard part is that authority must only narrow. Budget is reserved atomically before any hold invoice exists — check and commit with no await between — so a burst of requests cannot jointly exceed the cap. It's BigInt msat math and a single conditional update, not a heuristic.
@@ -28,7 +28,7 @@ A hostile marketplace sends 20% against a 5% cap → `EXCEEDS_MAX_PERCENT`. Unap
 The load-bearing primitive is the NWC Commission Payments draft's `make_commission_invoice` method (`nwc#8`), implemented in `engine/bin/commission-service.js` and restricted in `engine/bin/nwc-server.js`. Remove it and there is no product — this is structural dependence, not a logo.
 
 **8/ The live proof — and its limit**
-The independent verifier ran against three live LND nodes on regtest: `evidence/bundle.json` shows `summary {passed: 18, failed: 0}`, exit 0. It queried node state with read-only macaroons — sale and commission hold invoices settled, buyer payment finalized, preimage SHA-256-checked in memory and never written. The deterministic layer is separately proven (12/12 + 4/4 + 5/5). Limit: controlled regtest node-state verification, not Bitcoin consensus or trustlessness. Regtest only, no mainnet, single-process atomicity, static UI.
+The independent verifier ran against three live LND nodes on regtest: `evidence/bundle.json` shows `summary {passed: 18, failed: 0}`, exit 0. It queried node state with read-only macaroons — sale and commission hold invoices settled, buyer payment finalized, preimage SHA-256-checked in memory and never written. The deterministic layer is separately proven (14/14 + 4/4 + 5/5). Limit: controlled regtest node-state verification, not Bitcoin consensus or trustlessness. Regtest only, no mainnet, single-process atomicity, static UI.
 
 **9/ The links**
 Repo: github.com/HillaryIkhais/alibi · Verify in 60s: the three commands in post 4 · Judge path: `JUDGES.md` · Mechanism: `THREAT_MODEL.md` · Honesty: `evidence/REAL_VS_MOCKED.md`.

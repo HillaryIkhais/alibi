@@ -65,7 +65,7 @@ Inside the product, a judge can see:
 - Underlying records: sale invoice, commission invoice, payment hash
 - Source and timestamp: from LND node queries (verifier.js)
 - Links to the source: node-backed, not app-claimed
-- Sample size: 12/12 adversarial tests
+- Sample size: 14/14 adversarial tests
 - Confidence: deterministic BigInt policy, no floats
 - Refresh policy: verifier queries live node state
 - What was inferred vs observed: all observed from node state
@@ -75,7 +75,7 @@ Inside the product, a judge can see:
 
 | Evidence | Source | Timestamp | Limit |
 |----------|--------|-----------|-------|
-| Adversarial results | `evidence/adversarial-results.json` | generated_at | 12/12 pass |
+| Adversarial results | `evidence/adversarial-results.json` | generated_at | 14/14 pass |
 | Verifier bundle | `evidence/bundle.json` (live nodes) | generated_at | read-only |
 | Code hash | git commit | commit date | SHA-256 |
 | Policy limits | commission-service.js | N/A | 5% max, 100k sats budget |
