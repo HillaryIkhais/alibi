@@ -105,12 +105,27 @@ function openDb() {
       CREATE INDEX IF NOT EXISTS idx_audit_hash ON audit(input_hash);
       CREATE INDEX IF NOT EXISTS idx_audit_time ON audit(timestamp);
     `);
-    // Seed policy if absent
+    // Forward migrations for state created before the two-identity split and
+    // the verified-payment accounting columns.
+    try { db.exec('ALTER TABLE policy ADD COLUMN allowed_marketplace TEXT'); } catch (e) {}
+    try { db.exec('ALTER TABLE policy ADD COLUMN max_budget_msat INTEGER NOT NULL DEFAULT 100000000'); } catch (e) {}
+    try { db.exec('ALTER TABLE commissions ADD COLUMN fee_msat INTEGER NOT NULL DEFAULT 0'); } catch (e) {}
+    try { db.exec('ALTER TABLE commissions ADD COLUMN payment_preimage TEXT'); } catch (e) {}
+
+    // Seed policy if absent. The marketplace caller identity and the Lightning
+    // invoice destination are DISTINCT identities with separate policy fields.
+    const marketplace = process.env.HARBOR_MARKETPLACE_PUBKEY || null;
+    const payee = process.env.HARBOR_COMMISSION_PAYEE_PUBKEY || marketplace;
     const row = db.prepare('SELECT id FROM policy WHERE id = 1').get();
     if (!row) {
       db.prepare(
-        'INSERT INTO policy (id, max_rate_ppm, max_fixed_msat, allowed_payee, base_msat, rate_ppm, updated_at) VALUES (1, 50000, 0, NULL, 1000, 5000, ?)'
-      ).run(Math.floor(Date.now() / 1000));
+        'INSERT INTO policy (id, max_rate_ppm, max_fixed_msat, allowed_payee, allowed_marketplace, base_msat, rate_ppm, updated_at) VALUES (1, 50000, 0, ?, ?, 1000, 5000, ?)'
+      ).run(payee, marketplace, Math.floor(Date.now() / 1000));
+    } else if (marketplace || process.env.HARBOR_COMMISSION_PAYEE_PUBKEY) {
+      // Documented env vars are authoritative when set.
+      db.prepare(
+        'UPDATE policy SET allowed_marketplace = COALESCE(?, allowed_marketplace), allowed_payee = COALESCE(?, allowed_payee) WHERE id = 1'
+      ).run(marketplace, process.env.HARBOR_COMMISSION_PAYEE_PUBKEY || null);
     }
     // Seed budget if absent
     const bro = db.prepare('SELECT id FROM budget WHERE id = 1').get();
@@ -131,19 +146,29 @@ class CommissionPolicy {
     this.maxRatePPM = opts.maxRatePPM ?? 50000;   // 5%
     this.maxFixedMsat = BigInt(opts.maxFixedMsat ?? 0);
     this.allowedPayee = opts.allowedPayee ?? null;
+    // Distinct from allowedPayee: who may CALL make_commission_invoice vs where
+    // the Lightning commission invoice actually pays.
+    this.allowedMarketplace = opts.allowedMarketplace ?? null;
     this.maxBudgetMsat = BigInt(opts.maxBudgetMsat ?? 100000000); // 100,000 sats
     this.baseMsat = BigInt(opts.baseMsat ?? 1000);
     this.ratePPM = BigInt(opts.ratePPM ?? 5000); // 0.5% routing fee cap
   }
 
   static load() {
-    if (!db) return new CommissionPolicy();
+    // The documented env vars must configure the allowlist even when SQLite is
+    // unavailable. Otherwise the in-memory fallback silently disables every
+    // payee/marketplace check by leaving both identities null.
+    if (!db) return new CommissionPolicy({
+      allowedPayee: process.env.HARBOR_COMMISSION_PAYEE_PUBKEY || process.env.HARBOR_MARKETPLACE_PUBKEY || null,
+      allowedMarketplace: process.env.HARBOR_MARKETPLACE_PUBKEY || null,
+    });
     const p = db.prepare('SELECT * FROM policy WHERE id = 1').get();
     if (!p) return new CommissionPolicy();
     return new CommissionPolicy({
       maxRatePPM: p.max_rate_ppm,
       maxFixedMsat: p.max_fixed_msat,
       allowedPayee: p.allowed_payee || null,
+      allowedMarketplace: p.allowed_marketplace || null,
       maxBudgetMsat: p.max_budget_msat ?? 100000000,
       baseMsat: p.base_msat,
       ratePPM: p.rate_ppm,
@@ -153,11 +178,12 @@ class CommissionPolicy {
   save() {
     if (!db) return;
     db.prepare(
-      'UPDATE policy SET max_rate_ppm=?, max_fixed_msat=?, allowed_payee=?, max_budget_msat=?, base_msat=?, rate_ppm=?, updated_at=? WHERE id=1'
+      'UPDATE policy SET max_rate_ppm=?, max_fixed_msat=?, allowed_payee=?, allowed_marketplace=?, max_budget_msat=?, base_msat=?, rate_ppm=?, updated_at=? WHERE id=1'
     ).run(
       this.maxRatePPM,
       Number(this.maxFixedMsat),
       this.allowedPayee,
+      this.allowedMarketplace,
       Number(this.maxBudgetMsat),
       Number(this.baseMsat),
       Number(this.ratePPM),
@@ -186,14 +212,12 @@ class CommissionPolicy {
       errors.push({ code: 'EXCEEDS_MAX_PERCENT', reason: `${pct}% > 5% max` });
     }
 
-    // Payee check (payees is optional per draft; skip when not configured)
-    if (this.allowedPayee) {
-      if (commissionPayeePubkey && commissionPayeePubkey !== this.allowedPayee) {
-        errors.push({ code: 'UNAUTHORIZED_PAYEE', reason: 'Commission payee not in allowlist' });
-      }
-      if (marketplacePubkey !== this.allowedPayee) {
-        errors.push({ code: 'UNAUTHORIZED_MARKETPLACE', reason: 'Marketplace not authorized' });
-      }
+    // Two DISTINCT identities: where the funds go vs who may request it.
+    if (this.allowedPayee && commissionPayeePubkey && commissionPayeePubkey !== this.allowedPayee) {
+      errors.push({ code: 'UNAUTHORIZED_PAYEE', reason: 'Commission payee not in allowlist' });
+    }
+    if (this.allowedMarketplace && marketplacePubkey !== this.allowedMarketplace) {
+      errors.push({ code: 'UNAUTHORIZED_MARKETPLACE', reason: 'Marketplace not authorized' });
     }
 
     // Budget check with active reservations (atomic)
@@ -201,7 +225,7 @@ class CommissionPolicy {
       const row = db.prepare('SELECT spent_msat FROM budget WHERE id = 1').get();
       const spent = BigInt(row.spent_msat);
       const reserved = db.prepare(
-        'SELECT COALESCE(SUM(amount_msat), 0) AS total FROM reservations WHERE status = ?'
+        'SELECT COALESCE(SUM(amount_msat + routing_fee_msat), 0) AS total FROM reservations WHERE status = ?'
       ).get('reserved');
       const reservedTotal = BigInt(reserved.total || 0);
       const remaining = this.maxBudgetMsat - spent - reservedTotal;
@@ -209,8 +233,11 @@ class CommissionPolicy {
         errors.push({ code: 'BUDGET_EXCEEDED', reason: `Requested ${commBigInt}msat, remaining ${remaining}msat` });
       }
     } else {
-      // in-memory fallback
-      const remaining = this.maxBudgetMsat - this._memSpent - this._memReserved;
+      // in-memory fallback: derive reservations from live state, never from a
+      // stale counter (the old `_memReserved` was never updated by reserve()).
+      const reservedTotal = Array.from(this._memReservations.values())
+        .reduce((sum, r) => sum + BigInt(r.amountMsat) + BigInt(r.routingFeeMsat || 0), 0n);
+      const remaining = this.maxBudgetMsat - this._memSpent - reservedTotal;
       if (commBigInt > remaining) {
         errors.push({ code: 'BUDGET_EXCEEDED', reason: `Requested ${commBigInt}msat, remaining ${remaining}msat` });
       }
@@ -235,7 +262,7 @@ class CommissionPolicy {
       const row = db.prepare('SELECT spent_msat FROM budget WHERE id = 1').get();
       const spent = BigInt(row.spent_msat);
       const reserved = db.prepare(
-        'SELECT COALESCE(SUM(amount_msat), 0) AS total FROM reservations WHERE status = ?'
+        'SELECT COALESCE(SUM(amount_msat + routing_fee_msat), 0) AS total FROM reservations WHERE status = ?'
       ).get('reserved');
       const reservedTotal = BigInt(reserved.total || 0);
       const remaining = this.maxBudgetMsat - spent - reservedTotal;
@@ -258,7 +285,7 @@ class CommissionPolicy {
     } else {
       // Budget check with active reservations
       const reservedTotal = Array.from(this._memReservations.values())
-        .reduce((sum, r) => sum + BigInt(r.amountMsat), 0n);
+        .reduce((sum, r) => sum + BigInt(r.amountMsat) + BigInt(r.routingFeeMsat || 0), 0n);
       const remaining = this.maxBudgetMsat - this._memSpent - reservedTotal;
       if (BigInt(amountMsat) > remaining) {
         return { ok: false, reason: `Budget exceeded: requested ${amountMsat}msat, remaining ${remaining}msat` };
@@ -278,21 +305,26 @@ class CommissionPolicy {
     }
   }
 
-  commitSpent(paymentHash, amountMsat) {
+  // Commit the reserved commission plus the ACTUAL routing fee paid. The fee
+  // is part of the reserved budget and must be debited, not silently absorbed.
+  commitSpent(paymentHash, actualFeeMsat = 0) {
+    const fee = BigInt(actualFeeMsat || 0);
     if (db) {
       const res = db.prepare('SELECT amount_msat FROM reservations WHERE payment_hash = ? AND status = ?').get(paymentHash, 'reserved');
       if (!res) return false;
+      const total = BigInt(res.amount_msat) + fee;
       db.transaction(() => {
-        db.prepare('UPDATE budget SET spent_msat = spent_msat + ? WHERE id = 1').run(Number(amountMsat));
-        db.prepare('UPDATE reservations SET status = ? WHERE payment_hash = ?').run('spent', paymentHash);
+        db.prepare('UPDATE budget SET spent_msat = spent_msat + ? WHERE id = 1').run(Number(total));
+        db.prepare('UPDATE reservations SET status = ?, routing_fee_msat = ? WHERE payment_hash = ?').run('spent', Number(fee), paymentHash);
       })();
-      return true;
+      return Number(total);
     } else {
       const res = this._memReservations.get(paymentHash);
       if (!res) return false;
-      this._memSpent += res.amountMsat;
+      const total = BigInt(res.amountMsat) + fee;
+      this._memSpent += total;
       this._memReservations.delete(paymentHash);
-      return true;
+      return Number(total);
     }
   }
 
@@ -348,15 +380,58 @@ class LndClient {
     });
   }
 
+  // LND streaming endpoints (/v2/router/send, /v2/router/track/{hash}) return
+  // newline-delimited JSON objects, not one JSON document. Buffering the whole
+  // body and calling JSON.parse once throws as soon as a second update arrives.
+  // Verified against live regtest: a single pay produced IN_FLIGHT + FAILED lines.
+  requestStream(method, path, body = null) {
+    return new Promise((resolve, reject) => {
+      const opts = this._opts(path, method);
+      const updates = [];
+      let buf = '';
+      const pushLine = (line) => {
+        const t = line.trim();
+        if (!t) return;
+        try { updates.push(JSON.parse(t)); } catch (e) { /* skip malformed line */ }
+      };
+      const req = (this.restUrl.startsWith('https') ? https : http).request(opts, (res) => {
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => {
+          buf += chunk;
+          let nl;
+          while ((nl = buf.indexOf('\n')) !== -1) {
+            pushLine(buf.slice(0, nl));
+            buf = buf.slice(nl + 1);
+          }
+        });
+        res.on('end', () => {
+          pushLine(buf);
+          if (res.statusCode >= 400) {
+            const msg = updates.map(u => u.error?.message || '').filter(Boolean).join('; ');
+            reject(new Error(`LND ${res.statusCode}${msg ? ': ' + msg : ''}`));
+          } else {
+            resolve({ status: res.statusCode, updates });
+          }
+        });
+      });
+      req.on('error', reject);
+      req.setTimeout(90000, () => req.destroy(new Error('LND stream timeout')));
+      if (body) req.write(JSON.stringify(body));
+      req.end();
+    });
+  }
+
   get(path) { return this.request('GET', path); }
   post(path, body) { return this.request('POST', path, body); }
 
   async addHoldInvoice(valueMsat, paymentHashHex, description, expirySeconds = 3600) {
-    // LND REST API expects payment_hash as base64, not hex
+    // LND REST AddHoldInvoice expects the hash field named `hash`, base64-encoded
+    // bytes. Verified on live regtest: `payment_hash` -> "unknown field" 400,
+    // `hash` -> 200 with a payment_request.
     const paymentHashBuf = Buffer.from(paymentHashHex, 'hex');
     const r = await this.post('/v2/invoices/hodl', {
       value_msat: String(valueMsat),
-      payment_hash: paymentHashBuf.toString('base64'),
+      hash: paymentHashBuf.toString('base64'),
       memo: description,
       expiry: String(expirySeconds),
     });
@@ -372,13 +447,24 @@ class LndClient {
   }
 
   async sendPaymentV2(paymentRequest, feeLimitMsat = 1000000) {
-    const r = await this.post('/v2/router/send', {
+    const { updates } = await this.requestStream('POST', '/v2/router/send', {
       payment_request: paymentRequest,
       fee_limit_msat: String(feeLimitMsat),
       timeout_seconds: 60,
     });
-    if (r.status >= 400) throw new Error(`SendPaymentV2 ${r.status}: ${JSON.stringify(r.body)}`);
-    return r.body;
+    const results = updates.map(u => u.result).filter(Boolean);
+    if (!results.length) throw new Error('SendPaymentV2 returned no payment updates');
+    // The final update is authoritative. Callers MUST check status === SUCCEEDED.
+    const final = results[results.length - 1];
+    return {
+      status: final.status,
+      failure_reason: final.failure_reason,
+      fee_msat: final.fee_msat,
+      payment_preimage: final.payment_preimage,
+      payment_hash: final.payment_hash,
+      value_msat: final.value_msat,
+      updates: results.length,
+    };
   }
 
   async settleInvoice(paymentHash, preimageHex) {
@@ -404,9 +490,24 @@ class LndClient {
   }
 
   async trackPayment(paymentHash) {
-    const r = await this.get(`/v2/router/track/${paymentHash}`);
-    if (r.status >= 400) throw new Error(`TrackPayment ${r.status}`);
-    return r.body;
+    // Also a server-streaming endpoint: parse the NDJSON updates and return the
+    // last (terminal) one. The path parameter is base64 bytes, NOT hex —
+    // passing hex makes LND decode 64 chars as 48 bytes and reject it.
+    const hashB64 = Buffer.from(paymentHash, 'hex').toString('base64');
+    const { updates } = await this.requestStream('GET', `/v2/router/track/${encodeURIComponent(hashB64)}`);
+    const results = updates.map(u => u.result).filter(Boolean);
+    if (!results.length) throw new Error('TrackPayment returned no updates');
+    return results[results.length - 1];
+  }
+
+  // TrackPaymentV2 only serves payments still in the router's control tower:
+  // completed payments return 404. ListPayments is the authoritative durable
+  // record of an outgoing payment (verified on live regtest LND 0.21).
+  async findPayment(paymentHash) {
+    const r = await this.get('/v1/payments?include_incomplete=true&reversed=true&num_max_payments=100');
+    if (r.status >= 400) throw new Error(`ListPayments ${r.status}`);
+    const payments = r.body?.payments || [];
+    return payments.find(p => p.payment_hash === paymentHash) || null;
   }
 
   async decodePayReq(paymentRequest) {
@@ -496,7 +597,10 @@ class CommissionService {
     this.lnd = (this.restUrl && this.macaroon) ? new LndClient(this.restUrl, this.macaroon, this.tlsCert) : null;
     this.mode = this.lnd ? 'REAL' : 'SIM';
     this.auditLog = []; // in-memory fallback when SQLite unavailable
-    console.log(`[alibi] mode=${this.mode} policy=5% max_budget=100,000sats payee=${this.policy.allowedPayee ?? '(none set)'}`);
+    // Verified fee caps for outgoing payments when SQLite is unavailable.
+    this.paymentCaps = new Map();
+    console.log(`[alibi] mode=${this.mode} policy=5% max_budget=100,000sats`);
+    console.log(`[alibi] marketplace=${this.policy.allowedMarketplace ?? '(none set)'} payee=${this.policy.allowedPayee ?? '(none set)'}`);
   }
 
   // ── Provenance / audit ──────────────────────────────────────────────
@@ -573,10 +677,20 @@ class CommissionService {
       return { result: 'error', error: { code: 'INVALID_COMMISSION_AMOUNT', message: 'commission invoice has no amount' } };
     }
 
-    // Network check (regtest only)
-    if (String(commission.network || '').toLowerCase() !== 'regtest') {
-      return { result: 'error', error: { code: 'WRONG_NETWORK', message: 'commission invoice not on regtest' } };
+    // DecodePayReq has NO `network` field (verified against live LND 0.21).
+    // Ask the node itself which chain it is on and fail closed if unavailable.
+    let nodeNetwork = '';
+    try {
+      const info = await this.lnd.getInfo();
+      nodeNetwork = String(info.chains?.[0]?.network || '').toLowerCase();
+    } catch (e) {
+      return { result: 'error', error: { code: 'NODE_INFO_FAILED', message: e.message } };
     }
+    if (nodeNetwork !== 'regtest') {
+      return { result: 'error', error: { code: 'WRONG_NETWORK', message: `node network is ${nodeNetwork || 'unknown'}, not regtest` } };
+    }
+    // A BOLT11 has no network field either; the destination must be one of our
+    // configured payees (checked below), which binds the invoice to this node.
 
     // Payee check: destination pubkey must be in allowed payees
     const destPubkey = String(commission.destination || '');
@@ -584,18 +698,24 @@ class CommissionService {
       return { result: 'error', error: { code: 'UNAUTHORIZED_PAYEE', message: 'commission payee not authorized' } };
     }
 
-    // Marketplace authorization: validate the marketplace pubkey from the request
-    // against the allowed payee. In a full NWC implementation this would come
-    // from a signed NIP-47 event; here we record the check for the audit log.
-    const reqMarketPubkey = marketplace_pubkey || this.policy.allowedPayee || '';
-    if (this.policy.allowedPayee && reqMarketPubkey !== this.policy.allowedPayee) {
-      return { result: 'error', error: { code: 'UNAUTHORIZED_MARKETPLACE', message: 'Marketplace pubkey not in allowlist' } };
+    // Marketplace caller identity is SEPARATE from the Lightning invoice payee.
+    // The caller must be the configured marketplace, and must actually present
+    // an identity — falling back to the configured value would authenticate
+    // every anonymous request as the marketplace.
+    const reqMarketPubkey = String(marketplace_pubkey || '');
+    if (this.policy.allowedMarketplace) {
+      if (!reqMarketPubkey) {
+        return { result: 'error', error: { code: 'MISSING_MARKETPLACE_IDENTITY', message: 'marketplace identity not supplied by caller' } };
+      }
+      if (reqMarketPubkey !== this.policy.allowedMarketplace) {
+        return { result: 'error', error: { code: 'UNAUTHORIZED_MARKETPLACE', message: 'Marketplace caller not in allowlist' } };
+      }
     }
 
     // ── 4. Policy validation: commission rate vs sale amount ──
     const validation = this.policy.validateCommission({
       commissionMsat, saleMsat,
-      marketplacePubkey: this.policy.allowedPayee || '',
+      marketplacePubkey: reqMarketPubkey,
       paymentHash: payment_hash,
       commissionPayeePubkey: destPubkey,
     });
@@ -607,7 +727,7 @@ class CommissionService {
     const routingFeeMsat = this.policy.maxRoutingFeeMsat(commissionMsat);
     const reserved = this.policy.reserve({
       paymentHash: payment_hash, amountMsat: commissionMsat,
-      routingFeeMsat, marketplacePubkey: this.policy.allowedPayee || '',
+      routingFeeMsat, marketplacePubkey: reqMarketPubkey,
     });
     if (!reserved.ok) {
       return { result: 'error', error: { code: 'BUDGET_EXCEEDED', message: reserved.reason } };
@@ -685,8 +805,12 @@ class CommissionService {
     const saleMsat = BigInt(saleAmtSats) * 1000n;
     const commissionMsat = (saleMsat * BigInt(commissionPct)) / 100n;
 
+    // CLI path: the calling marketplace and the invoice destination are still
+    // distinct policy identities. Default the caller to the configured
+    // marketplace, never silently to the payee.
+    const caller = this.policy.allowedMarketplace || this.policy.allowedPayee || '';
     const validation = this.policy.validateCommission({
-      commissionMsat, saleMsat, marketplacePubkey: this.policy.allowedPayee || '',
+      commissionMsat, saleMsat, marketplacePubkey: caller,
       paymentHash, commissionPayeePubkey: this.policy.allowedPayee || '',
     });
     if (!validation.valid) {
@@ -696,7 +820,7 @@ class CommissionService {
     const routingFeeMsat = this.policy.maxRoutingFeeMsat(commissionMsat);
     const reserved = this.policy.reserve({
       paymentHash, amountMsat: commissionMsat, routingFeeMsat,
-      marketplacePubkey: this.policy.allowedPayee || '',
+      marketplacePubkey: caller,
     });
     if (!reserved.ok) return { success: false, reason: reserved.reason };
 
@@ -743,7 +867,7 @@ class CommissionService {
 
     const validation = this.policy.validateCommission({
       commissionMsat, saleMsat,
-      marketplacePubkey: this.policy.allowedPayee || '',
+      marketplacePubkey: this.policy.allowedMarketplace || this.policy.allowedPayee || '',
       paymentHash,
       commissionPayeePubkey: this.policy.allowedPayee || '',
     });
@@ -762,18 +886,47 @@ class CommissionService {
     return { decision, validation };
   }
 
-  async payCommission(paymentRequest) {
+  async payCommission(paymentRequest, expectedPaymentHash = null) {
     if (!this.lnd) return { success: false, reason: 'REAL mode required; no LND credentials' };
     try {
-      // Decode the payment request to get the payment hash for tracking
       let decoded = null;
-      try {
-        decoded = await this.lnd.decodePayReq(paymentRequest);
-      } catch (e) {
-        // decode may fail for hold invoices; still attempt payment
+      try { decoded = await this.lnd.decodePayReq(paymentRequest); } catch (e) { /* non-fatal */ }
+
+      // The fee limit is the configured policy cap, NOT LND's 1,000,000 msat
+      // default. Compute it from the actual commission amount in the invoice.
+      const commMsat = BigInt(
+        decoded?.num_msat || (BigInt(decoded?.num_satoshis || 0) * 1000n) || 0
+      );
+      const cap = commMsat > 0n ? this.policy.maxRoutingFeeMsat(commMsat) : 0n;
+      if (cap <= 0n) return { success: false, reason: 'cannot determine commission amount / fee cap' };
+
+      const result = await this.lnd.sendPaymentV2(paymentRequest, Number(cap));
+      if (result.status !== 'SUCCEEDED') {
+        return { success: false, reason: `commission payment ${result.status}`, failure_reason: result.failure_reason, payment: result };
       }
-      const result = await this.lnd.sendPaymentV2(paymentRequest);
-      return { success: true, payment: result, decoded };
+      if (expectedPaymentHash && result.payment_hash !== expectedPaymentHash) {
+        return { success: false, reason: 'commission payment hash does not match sale hash', payment: result };
+      }
+      const feeMsat = BigInt(result.fee_msat || '0');
+      if (feeMsat > cap) {
+        return { success: false, reason: `routing fee ${feeMsat}msat exceeds cap ${cap}msat`, payment: result };
+      }
+
+      this.paymentCaps.set(result.payment_hash, Number(cap));
+      if (db) {
+        db.prepare(
+          'UPDATE commissions SET commission_state=?, paid_at=?, fee_msat=?, payment_preimage=? WHERE payment_hash=?'
+        ).run('paid', Math.floor(Date.now() / 1000), Number(feeMsat), result.payment_preimage, result.payment_hash);
+      }
+      return {
+        success: true,
+        payment: result,
+        decoded,
+        fee_msat: Number(feeMsat),
+        fee_cap_msat: Number(cap),
+        payment_hash: result.payment_hash,
+        verified_status: result.status,
+      };
     } catch (e) {
       return { success: false, reason: e.message };
     }
@@ -781,18 +934,74 @@ class CommissionService {
 
   async settleSale({ paymentHash, preimageHex }) {
     if (!this.lnd) return { success: false, reason: 'REAL mode required' };
-    // Verify preimage hash matches
     const preimageBuf = Buffer.from(preimageHex, 'hex');
     const calcHash = crypto.createHash('sha256').update(preimageBuf).digest('hex');
     if (calcHash !== paymentHash) return { success: false, reason: 'preimage hash mismatch' };
 
+    // INVARIANT: possessing the preimage is NOT proof the vendor paid the
+    // marketplace. Query the vendor node's own outgoing payment state and
+    // require a terminal SUCCEEDED result before releasing the buyer's HTLC.
+    let pay;
+    try {
+      pay = await this.lnd.findPayment(paymentHash);
+    } catch (e) {
+      return { success: false, reason: `outgoing commission payment not verifiable: ${e.message}` };
+    }
+    if (!pay) {
+      return { success: false, reason: 'outgoing commission payment not found on vendor node' };
+    }
+    if (pay.status !== 'SUCCEEDED') {
+      return { success: false, reason: `outgoing commission payment not SUCCEEDED (${pay?.status || 'unknown'})` };
+    }
+    if (pay.payment_hash && pay.payment_hash !== paymentHash) {
+      return { success: false, reason: 'verified payment hash does not match sale hash' };
+    }
+    if (pay.payment_preimage && pay.payment_preimage !== preimageHex) {
+      return { success: false, reason: 'verified payment preimage does not match supplied preimage' };
+    }
+
+    // Enforce the reserved routing-fee cap against the ACTUAL fee paid.
+    let reservedFeeCap = null;
+    if (db) {
+      const r = db.prepare('SELECT routing_fee_msat FROM reservations WHERE payment_hash = ?').get(paymentHash);
+      if (r) reservedFeeCap = BigInt(r.routing_fee_msat || 0);
+    }
+    if (reservedFeeCap === null && this.paymentCaps?.has(paymentHash)) {
+      reservedFeeCap = BigInt(this.paymentCaps.get(paymentHash));
+    }
+    if (reservedFeeCap === null && pay.value_msat) {
+      // Last resort: derive the cap from policy against the verified commission
+      // amount, so the fee is never left unchecked in in-memory mode.
+      reservedFeeCap = this.policy.maxRoutingFeeMsat(BigInt(pay.value_msat));
+    }
+    const feeMsat = BigInt(pay.fee_msat || '0');
+    if (reservedFeeCap !== null && feeMsat > reservedFeeCap) {
+      return { success: false, reason: `actual fee ${feeMsat}msat exceeds reserved cap ${reservedFeeCap}msat` };
+    }
+
     try {
       await this.lnd.settleInvoice(paymentHash, preimageHex);
+      const totalCommitted = this.policy.commitSpent(paymentHash, feeMsat);
       if (db) {
         db.prepare('UPDATE sales SET sale_state = ?, settled_at = ? WHERE payment_hash = ?').run('settled', Math.floor(Date.now() / 1000), paymentHash);
-        db.prepare('UPDATE commissions SET commission_state = ?, paid_at = ? WHERE payment_hash = ?').run('settled', Math.floor(Date.now() / 1000), paymentHash);
+        db.prepare(
+          'UPDATE commissions SET commission_state=?, paid_at=?, fee_msat=?, payment_preimage=? WHERE payment_hash=?'
+        ).run('settled', Math.floor(Date.now() / 1000), Number(feeMsat), preimageHex, paymentHash);
       }
-      return { success: true, verified: true };
+      this.recordAudit(
+        'settle-sale', paymentHash,
+        crypto.createHash('sha256').update(JSON.stringify({ paymentHash, preimageHex })).digest('hex'),
+        'ALLOW', 'OUTGOING_PAYMENT_VERIFIED',
+        crypto.createHash('sha256').update(JSON.stringify({ paymentHash, feeMsat: Number(feeMsat) })).digest('hex'),
+        null, null
+      );
+      return {
+        success: true, verified: true,
+        outgoing_payment_status: pay.status,
+        actual_fee_msat: Number(feeMsat),
+        reserved_fee_cap_msat: reservedFeeCap === null ? null : Number(reservedFeeCap),
+        total_budget_debit_msat: totalCommitted,
+      };
     } catch (e) {
       return { success: false, reason: e.message };
     }
@@ -868,9 +1077,14 @@ class CommissionService {
 
   async reconcile({ paymentHash }) {
     if (!this.lnd) return { success: false, reason: 'REAL mode required' };
-    // Authoritative LND state, not application DB
+
+    // Authoritative LND state, not the application DB. Both legs are checked:
+    // the incoming sale hold invoice and the outgoing commission payment.
     const invoice = await this.lnd.lookupInvoice(paymentHash);
-    if (!invoice) return { success: false, reason: 'invoice not found on node' };
+    if (!invoice) return { success: false, reason: 'sale invoice not found on node' };
+
+    let outgoing = null;
+    try { outgoing = await this.lnd.findPayment(paymentHash); } catch (e) { /* no outgoing payment yet */ }
 
     const state = {
       paymentHash,
@@ -878,15 +1092,44 @@ class CommissionService {
       settled: invoice.state === 'SETTLED',
       paidAmtMsat: BigInt(invoice.value_msat || BigInt(invoice.value || 0) * 1000n),
       preimagePresent: !!invoice.r_preimage,
+      outgoingPayment: outgoing ? {
+        status: outgoing.status,
+        failure_reason: outgoing.failure_reason,
+        fee_msat: outgoing.fee_msat,
+        preimage: outgoing.payment_preimage,
+      } : null,
+      // The buyer's held payment may only be released when BOTH legs are final.
+      safeToSettle: invoice.state === 'ACCEPTED' && outgoing?.status === 'SUCCEEDED',
+      recoveryActions: [],
     };
 
     if (db) {
       const sale = db.prepare('SELECT * FROM sales WHERE payment_hash = ?').get(paymentHash);
       const comm = db.prepare('SELECT * FROM commissions WHERE payment_hash = ?').get(paymentHash);
       state.appState = { sale, commission: comm };
-      // Reconcile: if LND says settled but app says pending, fix it
+
+      // Repair state drift using the node as the source of truth.
       if (invoice.state === 'SETTLED' && sale && sale.sale_state !== 'settled') {
         db.prepare('UPDATE sales SET sale_state = ?, settled_at = ? WHERE payment_hash = ?').run('settled', Math.floor(Date.now() / 1000), paymentHash);
+        state.recoveryActions.push('sale_marked_settled_from_node');
+      }
+      if (outgoing?.status === 'SUCCEEDED' && comm && comm.commission_state !== 'settled' && comm.commission_state !== 'paid') {
+        db.prepare(
+          'UPDATE commissions SET commission_state=?, paid_at=?, fee_msat=?, payment_preimage=? WHERE payment_hash=?'
+        ).run('paid', Math.floor(Date.now() / 1000), Number(outgoing.fee_msat || 0), outgoing.payment_preimage, paymentHash);
+        state.recoveryActions.push('commission_marked_paid_from_node');
+      }
+      if (outgoing?.status === 'FAILED' && comm && comm.commission_state === 'pending') {
+        db.prepare('UPDATE commissions SET commission_state = ? WHERE payment_hash = ?').run('failed', paymentHash);
+        state.recoveryActions.push('commission_marked_failed_from_node');
+      }
+      // An expired/canceled invoice must release the reservation so the budget
+      // is not permanently locked after a restart.
+      if ((invoice.state === 'CANCELED' || invoice.state === 'EXPIRED') && sale && sale.sale_state !== 'canceled') {
+        this.policy.release(paymentHash);
+        db.prepare('UPDATE sales SET sale_state = ? WHERE payment_hash = ?').run('canceled', paymentHash);
+        db.prepare("UPDATE commissions SET commission_state = 'canceled' WHERE payment_hash = ?").run(paymentHash);
+        state.recoveryActions.push('reservation_released_after_cancel');
       }
     }
     return { success: true, ...state };
@@ -898,7 +1141,14 @@ class CommissionService {
       const reserved = db.prepare('SELECT COALESCE(SUM(amount_msat),0) AS t FROM reservations WHERE status = ?').get('reserved');
       return { maxBudgetMsat: row.max_budget_msat, spentMsat: row.spent_msat, reservedMsat: Number(reserved.t || 0), remainingMsat: row.max_budget_msat - row.spent_msat - Number(reserved.t || 0) };
     }
-    return { maxBudgetMsat: Number(this.policy.maxBudgetMsat), spentMsat: Number(this.policy._memSpent), reservedMsat: Number(this.policy._memReserved), remainingMsat: Number(this.policy.maxBudgetMsat - this.policy._memSpent - this.policy._memReserved) };
+    const memReserved = Array.from(this.policy._memReservations.values())
+      .reduce((sum, r) => sum + BigInt(r.amountMsat) + BigInt(r.routingFeeMsat || 0), 0n);
+    return {
+      maxBudgetMsat: Number(this.policy.maxBudgetMsat),
+      spentMsat: Number(this.policy._memSpent),
+      reservedMsat: Number(memReserved),
+      remainingMsat: Number(this.policy.maxBudgetMsat - this.policy._memSpent - memReserved),
+    };
   }
 }
 
@@ -940,7 +1190,7 @@ async function main() {
       break;
     }
     case 'pay-commission': {
-      const r = await svc.payCommission(process.argv[3]);
+      const r = await svc.payCommission(process.argv[3], process.argv[4] || null);
       console.log(JSON.stringify(r, null, 2));
       break;
     }
@@ -965,10 +1215,12 @@ async function main() {
     }
     default:
       console.log('Alibi Commission Service — mode:', svc.mode);
-      console.log('Commands: demo | setup-sale <amt> <pct> <commission_bolt11> [hash] | look-up-invoice <hash> | pay-commission <bolt11> | settle-sale <hash> <preimage_hex> | cancel-sale <hash> | reconcile <hash> | budget');
+      console.log('Commands: demo | setup-sale <amt> <pct> <commission_bolt11> [hash] | look-up-invoice <hash> | pay-commission <bolt11> [expected_hash] | settle-sale <hash> <preimage_hex> | cancel-sale <hash> | reconcile <hash> | budget');
   }
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+if (require.main === module) {
+  main().catch((e) => { console.error(e); process.exit(1); });
+}
 
 module.exports = { CommissionService, LndClient, CommissionPolicy };

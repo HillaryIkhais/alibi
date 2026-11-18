@@ -35,9 +35,10 @@ class NwcServer {
   constructor() {
     this.svc = new CommissionService();
     this.connections = new Map(); // pubkey -> { approved, createdAt }
-    // Pre-approve the configured marketplace
-    if (this.svc.policy.allowedPayee) {
-      this.connections.set(this.svc.policy.allowedPayee, { approved: true, createdAt: Date.now() });
+    // The approved CALLER is the marketplace NWC identity. This is deliberately
+    // distinct from the Lightning invoice destination (policy.allowedPayee).
+    if (this.svc.policy.allowedMarketplace) {
+      this.connections.set(this.svc.policy.allowedMarketplace, { approved: true, createdAt: Date.now() });
     }
   }
 
@@ -66,20 +67,33 @@ class NwcServer {
   }
 
   async handleNip47(data, res) {
-    const { method, params } = data;
-    const result = await this.execute(method, params || {});
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ kind: 23195, ...result }));
+    // Real NWC transports a signed kind:23194 Nostr event with a NIP-44
+    // encrypted payload. This build has no BIP-340/NIP-44 implementation, so
+    // accepting raw JSON here would let anyone claim an approved identity.
+    // Fail closed: require an approved event author AND refuse to pretend an
+    // unverified envelope is a verified Nostr event.
+    const caller = String(data.pubkey || '');
+    if (!this.isApproved(caller)) {
+      this._send(res, 403, { result: 'error', error: { code: 'UNAUTHORIZED_CONNECTION', message: 'NIP-47 request has no approved connection' } });
+      return;
+    }
+    this._send(res, 401, {
+      result: 'error',
+      error: {
+        code: 'TRANSPORT_NOT_VERIFIED',
+        message: 'Signed Nostr event / NIP-44 decryption not implemented; refusing unverified request envelope',
+      },
+    });
   }
 
   async handleMethod(data, res) {
     const { method, params, pubkey } = data;
-    // Connection must be approved
+    // Every path must establish an approved caller before executing anything.
     if (!this.isApproved(pubkey)) {
       this._send(res, 403, { result: 'error', error: { code: 'UNAUTHORIZED_CONNECTION', message: 'Connection not approved for commission operations' } });
       return;
     }
-    const result = await this.execute(method, params || {});
+    const result = await this.execute(method, params || {}, pubkey);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(result));
   }
@@ -90,7 +104,7 @@ class NwcServer {
     return !!c?.approved;
   }
 
-  async execute(method, params = {}) {
+  async execute(method, params = {}, callerPubkey = '') {
     // Blocklist first
     if (BLOCKED_METHODS.has(method)) {
       return { result: 'error', error: { code: 'METHOD_NOT_ALLOWED', message: `${method} is restricted on commission-only connections` } };
@@ -110,6 +124,7 @@ class NwcServer {
               max_rate_ppm: this.svc.policy.maxRatePPM,
               max_fixed_msat: Number(this.svc.policy.maxFixedMsat),
               payees: this.svc.policy.allowedPayee ? [this.svc.policy.allowedPayee] : [],
+              marketplace: this.svc.policy.allowedMarketplace || null,
               max_routing_fee: { base_msat: Number(this.svc.policy.baseMsat), rate_ppm: Number(this.svc.policy.ratePPM) },
               budget_msat: Number(this.svc.policy.maxBudgetMsat),
             },
@@ -119,7 +134,12 @@ class NwcServer {
 
       case 'make_commission_invoice': {
         const { amount, payment_hash, commission_invoice, expiry } = params;
-        return await this.svc.handleMakeCommissionInvoice({ amount, payment_hash, commission_invoice, expiry });
+        // The caller identity comes from the authenticated connection, never
+        // from request params where an attacker could simply supply the value.
+        return await this.svc.handleMakeCommissionInvoice({
+          amount, payment_hash, commission_invoice, expiry,
+          marketplace_pubkey: callerPubkey,
+        });
       }
 
       case 'lookup_invoice': {
