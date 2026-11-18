@@ -1,10 +1,7 @@
 {
-  "suite": "alibi-adversarial-conformance/1.0",
-  "generated_at": "2026-11-17T14:09:25.390Z",
-  "policy_under_test": {
-    "max_rate_ppm": 50000,
-    "budget_msat": "varies by test"
-  },
+  "suite": "alibi-adversarial-conformance/2.0",
+  "generated_at": "2026-11-18T23:15:14.749Z",
+  "policy_under_test": "production:engine/bin/commission-service.js::CommissionPolicy",
   "checks": [
     {
       "test": "20% commission rejected",
@@ -19,7 +16,7 @@
       "status": "pass"
     },
     {
-      "test": "Unauthorized marketplace rejected",
+      "test": "Unauthorized marketplace caller rejected",
       "status": "pass"
     },
     {
@@ -47,6 +44,14 @@
       "status": "pass"
     },
     {
+      "test": "5,000 sats request fits 5,100 sats budget before fee reserve",
+      "status": "pass"
+    },
+    {
+      "test": "Reserved routing fee counted against budget (second request blocked)",
+      "status": "pass"
+    },
+    {
       "test": "First request with unique hash accepted",
       "status": "pass"
     },
@@ -56,10 +61,10 @@
     }
   ],
   "summary": {
-    "total": 12,
-    "passed": 12,
+    "total": 14,
+    "passed": 14,
     "failed": 0
   },
-  "claim_scope": "Policy-layer enforcement only. No LND nodes involved in this run. Wallet-level enforcement requires the regtest verifier (verifier.js).",
-  "checksum_sha256": "9d187b7fa5cf3ad61fb7a447bc7baf6ab894fd292c112fdc337752111d6aa973"
+  "claim_scope": "Production policy-layer enforcement only. No LND nodes involved in this run. Live wallet-level verification is the node-backed verifier (verifier.js).",
+  "checksum_sha256": "327c30f9ea526dbdcae36d9584b4a11d42720e3d735274d3e95c37d246ad8f68"
 }

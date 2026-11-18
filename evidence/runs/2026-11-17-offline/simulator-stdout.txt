@@ -2,10 +2,10 @@
 Require stack:
 - /Users/ikhaisoshuare/Downloads/DAKAR/DAKAR/engine/bin/commission-service.js
 - /Users/ikhaisoshuare/Downloads/DAKAR/DAKAR/engine/bin/commission-flow-simulator.js); falling back to in-memory state
-[alibi] mode=SIM policy=5% max_budget=100,000sats payee=(none set)
-Alibi Commission Service — mode: SIM
-Commands: demo | setup-sale <amt> <pct> <commission_bolt11> [hash] | look-up-invoice <hash> | pay-commission <bolt11> | settle-sale <hash> <preimage_hex> | cancel-sale <hash> | reconcile <hash> | budget
-[alibi] mode=SIM policy=5% max_budget=100,000sats payee=(none set)
+[alibi] mode=SIM policy=5% max_budget=100,000sats
+[alibi] marketplace=(none set) payee=(none set)
+[alibi] mode=SIM policy=5% max_budget=100,000sats
+[alibi] marketplace=(none set) payee=(none set)
 ╔══════════════════════════════════════════════════════════╗
 ║     ALIBI COMMISSION FLOW SIMULATOR (Alice-Bob-Carol)   ║
 ║     mode=SIM                                          ║
@@ -15,7 +15,7 @@ Commands: demo | setup-sale <amt> <pct> <commission_bolt11> [hash] | look-up-inv
 Carol: 03cc8aa6ac238af1ea51...
 Alice: 03042a9655ba75aef3db...
 Bob:   0225a72a6bee672de3e8...
-Hash:  7a62cca60a64fe418018eee8c2bd2a2cb02c9043dd9fe70e7291dcd77b1c711c
+Hash:  ee60883704b1368a3c4d7c4df6203945e3a3806f4b8f13cebac41c4e565bfd69
 STEP 1: Carol pays 100000 sats sale — ACCEPTED_HOLD
 STEP 2: Alice pays 5000 sats commission to Bob — rate 5%
 STEP 3: Bob captures commission; Alice releases sale via preimage
@@ -32,7 +32,7 @@ Vendor net BEFORE fees: 95,000 sats
 
 === ADVERSARIAL RE-CHECKS ===
 20% commission: BLOCKED ✓
-Unauthorized payee: BLOCKED ✓
+Unauthorized payee: ALLOWED (BUG!)
 Duplicate hash: BLOCKED ✓
 
 === CANCELLATION / REPAIR SCENARIO ===

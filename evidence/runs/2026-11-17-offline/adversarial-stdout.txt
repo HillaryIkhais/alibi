@@ -1,5 +1,12 @@
+[alibi] SQLite unavailable (Cannot find module 'better-sqlite3'
+Require stack:
+- /Users/ikhaisoshuare/Downloads/DAKAR/DAKAR/engine/bin/commission-service.js
+- /Users/ikhaisoshuare/Downloads/DAKAR/DAKAR/engine/bin/adversarial-test.js); falling back to in-memory state
+[alibi] mode=SIM policy=5% max_budget=100,000sats
+[alibi] marketplace=(none set) payee=(none set)
 ALIBI ADVERSARIAL CONFORMANCE TEST SUITE
 =========================================
+policy under test: production CommissionPolicy (commission-service.js)
 
 [1] Commission Percentage Tests
 --------------------------------
@@ -7,18 +14,20 @@ ALIBI ADVERSARIAL CONFORMANCE TEST SUITE
   ✓ PASS: 5% commission (boundary) accepted
   ✓ PASS: 5.01% commission rejected
 
-[2] Payee Authorization Tests
------------------------------
-  ✓ PASS: Unauthorized marketplace rejected
+[2] Payee & Caller Authorization Tests
+--------------------------------------
+  ✓ PASS: Unauthorized marketplace caller rejected
   ✓ PASS: Unauthorized commission payee rejected
   ✓ PASS: Authorized marketplace + payee accepted
 
-[3] Budget Enforcement Tests
-----------------------------
+[3] Budget Enforcement Tests (routing fee reserved)
+---------------------------------------------------
   ✓ PASS: Budget exhaustion: 5,000 sats request > 3,000 sats budget
   ✓ PASS: First request (5,000 of 8,000) accepted
   ✓ PASS: Second request (4,000 sats > 3,000 sats remaining) rejected
   ✓ PASS: Third request (3,000 sats fits exactly) accepted
+  ✓ PASS: 5,000 sats request fits 5,100 sats budget before fee reserve
+  ✓ PASS: Reserved routing fee counted against budget (second request blocked)
 
 [4] Duplicate Payment Hash Tests
 --------------------------------
@@ -26,9 +35,9 @@ ALIBI ADVERSARIAL CONFORMANCE TEST SUITE
   ✓ PASS: Duplicate hash rejected
 
 =========================================
-TEST RESULTS: 12 passed, 0 failed
+TEST RESULTS: 14 passed, 0 failed
 =========================================
 Evidence written: evidence/adversarial-results.json
 
-VENDOR POLICY ENFORCEMENT: VERIFIED
+VENDOR POLICY ENFORCEMENT: VERIFIED (production code)
 All adversarial scenarios blocked correctly.

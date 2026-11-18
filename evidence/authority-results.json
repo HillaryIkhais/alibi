@@ -1,0 +1,49 @@
+{
+  "suite": "alibi-nwc-authority/1.0",
+  "generated_at": "2026-11-18T23:15:15.545Z",
+  "checks": [
+    {
+      "name": "handleMethod blocks unapproved caller",
+      "status": "pass",
+      "detail": "code=403 body={\"result\":\"error\",\"error\":{\"code\":\"UNAUTHORIZED_CONNECTION\",\"message\":\"Connection not approved for commission operations\"}}"
+    },
+    {
+      "name": "handleMethod blocks missing caller",
+      "status": "pass",
+      "detail": "code=403"
+    },
+    {
+      "name": "handleNip47 blocks unapproved event author",
+      "status": "pass",
+      "detail": "code=403"
+    },
+    {
+      "name": "handleNip47 fails closed on unverified envelope",
+      "status": "pass",
+      "detail": "code=401 body={\"result\":\"error\",\"error\":{\"code\":\"TRANSPORT_NOT_VERIFIED\",\"message\":\"Signed Nostr event / NIP-44 decryption not implemented; refusing unverified request envelope\"}}"
+    },
+    {
+      "name": "get_info exposes distinct marketplace and payee identities",
+      "status": "pass",
+      "detail": "{\"version\":\"alibi-v1.0.0\",\"supported_tiers\":[\"basic\"],\"commission_policy\":{\"max_rate_ppm\":50000,\"max_fixed_msat\":0,\"payees\":[\"02d45125566fdb32a2c2e1f9086bcdf48038f5b432c2f281a82ff42817e11599f6\"],\"marketplace\":\"02d45125566fdb32a2c2e1f9086bcdf48038f5b432c2f281a82ff42817e11599f6\",\"max_routing_fee\":{\"base_msat\":1000,\"rate_ppm\":5000},\"budget_msat\":100000000},\"supported_methods\":[\"get_info\",\"lookup_invoice\",\"make_commission_invoice\"]}"
+    },
+    {
+      "name": "production policy rejects attacker marketplace caller",
+      "status": "pass",
+      "detail": "[{\"code\":\"UNAUTHORIZED_MARKETPLACE\",\"reason\":\"Marketplace not authorized\"}]"
+    },
+    {
+      "name": "pay_invoice stays blocked for approved caller",
+      "status": "pass",
+      "detail": "{\"result\":\"error\",\"error\":{\"code\":\"METHOD_NOT_ALLOWED\",\"message\":\"pay_invoice is restricted on commission-only connections\"}}"
+    }
+  ],
+  "summary": {
+    "total": 7,
+    "passed": 7,
+    "failed": 0
+  },
+  "scope": "NWC request-path authority boundary and identity separation. No LND calls; SIM mode.",
+  "limitation": "Full NIP-44 decryption and BIP-340 event verification are NOT implemented; the NIP-47 path fails closed rather than accepting unverified envelopes.",
+  "checksum_sha256": "7932b8b8824836f252988c365f1aa8441e507dd9851ab300079f3a36e1f60a2c"
+}

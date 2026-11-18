@@ -8,7 +8,7 @@ A gate is PASS only with a committed artifact and a command that regenerates it.
 | G2 | Payee allowlist enforced | unauthorized payee + marketplace rejected | `adversarial-results.json` | PASS |
 | G3 | Budget atomic | exhaustion + sequential reservation enforced | `adversarial-results.json` | PASS |
 | G4 | Replay prevented | duplicate hash rejected | `adversarial-results.json` | PASS |
-| G5 | Conformance suite green | 12/12, exit 0 | `runs/.../adversarial-stdout.txt` | PASS |
+| G5 | Conformance suite green | 14/14, exit 0 | `runs/.../adversarial-stdout.txt` | PASS |
 | G6 | Guards load-bearing | 4/4 mutants fail correlated test; source byte-identical | `mutation-results.json` | PASS |
 | G7 | Recovery pipeline green | 34 checks, exit 0 | `runs/.../pipeline-stdout.txt` | PASS |
 | G8 | Auditor green | 10 checks, exit 0 | `runs/.../auditor-stdout.txt` | PASS |
@@ -17,12 +17,17 @@ A gate is PASS only with a committed artifact and a command that regenerates it.
 | G11 | Evidence pinned | manifest with self-checksum regenerates | `manifest.json` | PASS |
 | G12 | Atomic budget under concurrency | 8 interleaved arrivals, no over-commit, 5/5 | `concurrency-results.json` | PASS |
 | G13 | Live 18/18 settlement | `bundle.json` with 18/18, exit 0, regenerable | `bundle.json` | **PASS** |
+| G14 | NWC authority boundary | 7/7; unapproved callers 403; unsigned NIP-47 envelope 401 `TRANSPORT_NOT_VERIFIED` | `authority-results.json` | **PASS** |
+| G15 | Production service completes central transaction | 14/14 stages; premature settle refused; outgoing payment verified before release; node final states checked | `production-flow.json` | **PASS** |
 
-**Definition of finished for the submission:** G1–G13 pass. G13 was closed by rebuilding the regtest
-lab from clean volumes with `harbor/lab/setup.sh`, executing a full same-hash hold-invoice settlement
-cycle across Alice/Bob/Carol, and regenerating `evidence/bundle.json` with the independent read-only
-verifier (18/18, exit 0). All 13 gates now have committed artifacts.
+**Definition of finished for the submission:** G1–G15 pass. G15 was closed by driving the real
+`CommissionService` through a full live hold → pay → verify → settle cycle with
+`engine/bin/production-flow.js` (buyer HTLC held, premature settlement refused, outgoing commission
+payment verified `SUCCEEDED` on the vendor node with an in-policy fee, sale released only afterward).
+G13 was closed by regenerating `evidence/bundle.json` with the independent read-only verifier against
+that same settlement (18/18, exit 0, `payment_hash` pinned in `production-flow.json`). All 15 gates
+have committed artifacts.
 
 ## Regeneration
-All gates regenerate via `REPRODUCE.md`. G13's live-cycle restore procedure is `REPRODUCE.md` §7. The
+All gates regenerate via `REPRODUCE.md`. The live-cycle/keepalive procedure is `REPRODUCE.md` §7. The
 claim ledger with per-gate hashes is `evidence/claims.json`.

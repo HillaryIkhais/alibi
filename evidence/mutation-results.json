@@ -1,50 +1,54 @@
 {
-  "suite": "alibi-mutation-test/1.0",
-  "generated_at": "2026-11-17T14:09:25.636Z",
-  "source_file": "engine/bin/adversarial-test.js",
-  "source_sha256_before": "f0e4dd9774cfc81c9135a9524c840d70f5c185324c7584bbffd13fa56467632d",
-  "source_sha256_after": "f0e4dd9774cfc81c9135a9524c840d70f5c185324c7584bbffd13fa56467632d",
+  "suite": "alibi-mutation-test/2.0 (production source)",
+  "generated_at": "2026-11-18T23:15:15.458Z",
+  "source_file": "engine/bin/commission-service.js",
+  "source_sha256_before": "0da1eb1da942c5677c5db423289967b05dc0fbc74970c7ca4e0e47dfa08058f9",
+  "source_sha256_after": "0da1eb1da942c5677c5db423289967b05dc0fbc74970c7ca4e0e47dfa08058f9",
   "byte_identical_restore": true,
-  "method": "Each guard disabled in a throwaway copy; the correlated conformance test must fail.",
+  "method": "Each PRODUCTION guard disabled in a throwaway module; the correlated conformance test must fail.",
   "results": [
     {
       "id": "rate-cap",
       "guard": "EXCEEDS_MAX_PERCENT (5% rate cap)",
+      "production_file": "engine/bin/commission-service.js",
       "mutation": "disabled: if (commBigInt > maxComm) {",
       "expected_test_to_fail": "20% commission rejected",
       "observed_fail_line": "✗ FAIL: 20% commission rejected",
       "mutant_exit_code": 1,
-      "verdict": "guard is load-bearing",
+      "verdict": "production guard is load-bearing",
       "passed": true
     },
     {
       "id": "payee-allowlist",
-      "guard": "UNAUTHORIZED_PAYEE (payee allowlist)",
-      "mutation": "disabled: if (commissionPayeePubkey && commissionPayeePubkey !== this.allowedPayee) {",
+      "guard": "UNAUTHORIZED_PAYEE (invoice destination allowlist)",
+      "production_file": "engine/bin/commission-service.js",
+      "mutation": "disabled: this.allowedPayee && commissionPayeePubkey && commissionPayeePubkey !== this.allowedPayee",
       "expected_test_to_fail": "Unauthorized commission payee rejected",
       "observed_fail_line": "✗ FAIL: Unauthorized commission payee rejected",
       "mutant_exit_code": 1,
-      "verdict": "guard is load-bearing",
+      "verdict": "production guard is load-bearing",
       "passed": true
     },
     {
       "id": "budget-cap",
-      "guard": "BUDGET_EXCEEDED (atomic budget)",
+      "guard": "BUDGET_EXCEEDED (atomic budget incl. routing fee)",
+      "production_file": "engine/bin/commission-service.js",
       "mutation": "disabled: if (commBigInt > remaining) {",
       "expected_test_to_fail": "Budget exhaustion",
       "observed_fail_line": "✗ FAIL: Budget exhaustion: 5,000 sats request > 3,000 sats budget",
       "mutant_exit_code": 1,
-      "verdict": "guard is load-bearing",
+      "verdict": "production guard is load-bearing",
       "passed": true
     },
     {
       "id": "duplicate-hash",
       "guard": "DUPLICATE_HASH (replay prevention)",
-      "mutation": "disabled:     if (this._memReservations.has(paymentHash)) {",
+      "production_file": "engine/bin/commission-service.js",
+      "mutation": "disabled: errors.push({ code: 'DUPLICATE_HASH', reason: 'Payment hash already reserved' })",
       "expected_test_to_fail": "Duplicate hash rejected",
       "observed_fail_line": "✗ FAIL: Duplicate hash rejected",
       "mutant_exit_code": 1,
-      "verdict": "guard is load-bearing",
+      "verdict": "production guard is load-bearing",
       "passed": true
     }
   ],
@@ -53,5 +57,5 @@
     "load_bearing": 4,
     "dead_guards": 0
   },
-  "checksum_sha256": "e587ae7e32ca300199e66fda87311d36c6830471fa20938e835ba8c7a2b3fdb7"
+  "checksum_sha256": "6648876fdee1967f68247e6b75fe521ca8ff5bbce25ac113ef3e4f06d79d570c"
 }

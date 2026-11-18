@@ -1,6 +1,6 @@
 {
   "suite": "alibi-concurrency-test/1.0",
-  "generated_at": "2026-11-17T14:10:54.045Z",
+  "generated_at": "2026-11-18T23:15:15.635Z",
   "scope": "Single-process atomicity of check-then-reserve under interleaved async arrivals. Not distributed/multi-root.",
   "budget_units": "9",
   "concurrent_requests": 8,
@@ -36,5 +36,5 @@
     "passed": 5,
     "failed": 0
   },
-  "checksum_sha256": "b51c5b8817a770ed48fe9b08ae08d90e0d2d752547e713682edf263ff2f1388d"
+  "checksum_sha256": "8d314b029b0613e64140b8603941811e40c506f87cbcc8f72cc848ce8d368807"
 }
