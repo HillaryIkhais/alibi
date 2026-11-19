@@ -33,10 +33,13 @@ const https = require('https');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const DB_PATH = path.join(DATA_DIR, 'alibi.sqlite');
 const POLICY_PATH = path.join(DATA_DIR, 'commission-policy.json');
+const COMPOSE_DIR = process.env.HARBOR_COMPOSE_DIR || path.join(__dirname, '..', '..', 'harbor');
+const ALICE_CONTAINER = 'lnd-alice';
 
 let sqlite3 = null;
 let db = null;
@@ -647,6 +650,27 @@ class CommissionService {
     console.log(`[alibi] marketplace=${this.policy.allowedMarketplace ?? '(none set)'} payee=${this.policy.allowedPayee ?? '(none set)'}`);
   }
 
+  // ── LND decodePayReq via lncli (inside Alice's container) ────────────────
+  //
+  // LND's REST DecodePayReq endpoint expects the pay_req as hex-encoded bytes in
+  // the URL path, but there is a version-specific issue where it fails to parse
+  // the hex string correctly. We fall back to lncli inside Alice's container,
+  // which accepts the raw BOLT11 invoice string.
+  decodePayReqViaLncli(paymentRequest) {
+    try {
+      const out = execFileSync(
+        'docker',
+        ['compose', '-f', path.join(COMPOSE_DIR, 'docker-compose.yml'), 'exec', '-T', 'lnd-alice',
+         'lncli', '--network=regtest', '--rpcserver=127.0.0.1:10029', 'decodepayreq', paymentRequest],
+        { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 }
+      );
+      return JSON.parse(out);
+    } catch (e) {
+      const stderr = e.stderr ? e.stderr.toString() : '';
+      throw new Error(`lncli decodepayreq failed: ${stderr || e.message}`);
+    }
+  }
+
   // ── Provenance / audit ──────────────────────────────────────────────
 
   recordAudit(actor, authorityRef, inputHash, decision, reasonCode, outputHash, parentAction, railReceipt) {
@@ -712,7 +736,7 @@ class CommissionService {
     let commission;
     if (this.lnd) {
       try {
-        commission = await this.lnd.decodePayReq(commission_invoice);
+        commission = await this.decodePayReqViaLncli(commission_invoice);
       } catch (e) {
         return { result: 'error', error: { code: 'INVALID_COMMISSION_INVOICE', message: e.message } };
       }
@@ -838,7 +862,7 @@ class CommissionService {
       const inv = await this.lnd.addHoldInvoice(saleMsat, payment_hash, `Commission-bound sale ${Number(saleMsat / 1000n)} sats`, saleExpiry, SALE_MIN_CLTV);
       saleInvoice = inv.payment_request;
       // Verify the created invoice carries the required CLTV before returning it.
-      const created = await this.lnd.decodePayReq(saleInvoice);
+      const created = await this.decodePayReqViaLncli(saleInvoice);
       const createdCltv = Number(created.cltv_expiry || 0);
       if (createdCltv < SALE_MIN_CLTV) {
         await this.lnd.cancelInvoice(payment_hash);
@@ -1005,7 +1029,7 @@ class CommissionService {
       // before invoking SendPaymentV2. A wrong invoice must never be paid.
       let decoded;
       try {
-        decoded = await this.lnd.decodePayReq(paymentRequest);
+        decoded = await this.decodePayReqViaLncli(paymentRequest);
       } catch (e) {
         return { success: false, reason: `cannot decode commission invoice: ${e.message}` };
       }
