@@ -90,10 +90,10 @@ async function pollUntil(cond, deadlineMs, intervalMs, label) {
 
 async function aliceInvoiceState(hash) {
   const inv = jout((await lncli('alice', ['lookupinvoice', hash])).stdout);
-  return inv.state;
+  return inv.state === 'ACCEPTED';
 }
 async function aliceListPayments() {
-  return jout((await lncli('alice', ['listpayments', '--include_incomplete', '--reversed', '--num_max_payments=100'])).stdout).payments || [];
+  return jout((await lncli('alice', ['listpayments', '--include_incomplete', '--max_payments=100'])).stdout).payments || [];
 }
 
 (async () => {
@@ -135,10 +135,13 @@ async function aliceListPayments() {
     made.error ? JSON.stringify(made.error) : '');
   const saleInvoice = made.data.invoice;
 
-  // 3) Carol pays the sale; Alice holds the HTLC (polled, not a fixed sleep).
-  const buyerPay = lncliBg('carol', ['payinvoice', '--force', `--pay_req=${saleInvoice}`]);
+  // 3) Carol pays the sale; Alice holds the HTLC. Run Carol's payinvoice in
+  // the background (it waits for settlement which won't happen until the
+  // commission is paid later) and poll Alice's node for the ACCEPTED HTLC.
+  // No fixed sleeps — poll until Alice's invoice is ACCEPTED or deadline.
+  const buyerPay = lncliBg('carol', ['payinvoice', '--force', '--timeout=90s', `--pay_req=${saleInvoice}`]);
   await pollUntil(
-    () => aliceInvoiceState(hash) === 'ACCEPTED',
+    () => aliceInvoiceState(hash),
     DEADLINE_MS, POLL_INTERVAL_MS, 'buyer HTLC held on Alice (ACCEPTED)'
   );
   stage('buyer_htlc_held_not_settled', true, `state=ACCEPTED`);
@@ -149,13 +152,30 @@ async function aliceListPayments() {
     premature.reason || 'settlement unexpectedly succeeded');
 
   // 5) Alice pays commission through production code (preflight + verify).
-  const alicePay = svc.payCommission(commissionInvoice, hash);
+  // Circular dependency: Alice's payment to Bob's HOLD invoice won't terminal-
+  // settle until Bob reveals the preimage (step 6), and Bob reveals it after
+  // seeing his invoice ACCEPTED. So run payCommission in the background, wait
+  // for Bob's invoice to go ACCEPTED, then Bob settles (reveals preimage),
+  // which lets Alice's payment complete SUCCEEDED.
+  const alicePayPromise = svc.payCommission(commissionInvoice, hash);
+
+  // Wait for Bob's commission invoice to be ACCEPTED (Alice's HTLC locked it).
+  async function bobInvoiceAccepted() {
+    const inv = jout((await lncli('bob', ['lookupinvoice', hash])).stdout);
+    return inv.state === 'ACCEPTED';
+  }
+  await pollUntil(
+    bobInvoiceAccepted,
+    DEADLINE_MS, POLL_INTERVAL_MS, "Bob's commission invoice ACCEPTED (Alice's HTLC locked)"
+  );
+
+  // Bob settles the commission invoice, revealing the shared preimage.
+  await lncli('bob', ['settleinvoice', preimage]);
+  stage('commission_invoice_settled_on_bob', true);
+
+  // Now Alice's payment to Bob completes (preimage revealed).
   const paid = await pollUntil(
-    () => {
-      const p = alicePay;
-      // payCommission returns a promise; poll until it resolves to a terminal result.
-      return Promise.resolve(p).then(r => r.success === true ? { ok: true, r } : { ok: false, r });
-    },
+    () => alicePayPromise.then(r => r.success === true ? { ok: true, r } : { ok: false, r }),
     DEADLINE_MS, POLL_INTERVAL_MS, 'commission payment SUCCEEDED via production payCommission'
   ).then(({ r }) => r);
   stage('commission_payment_verified_succeeded',
@@ -178,10 +198,6 @@ async function aliceListPayments() {
   stage('outgoing_payment_independently_confirmed',
     outgoingOnNode.status === 'SUCCEEDED' && outgoingOnNode.payment_hash === hash,
     `status=${outgoingOnNode.status} fee=${outgoingOnNode.fee_msat}msat`);
-
-  // 6) Bob settles the commission invoice with the shared preimage.
-  await lncli('bob', ['settleinvoice', preimage]);
-  stage('commission_invoice_settled_on_bob', true);
 
   // 7) settleSale() verifies outgoing payment on node state, then releases buyer.
   const settled = await svc.settleSale({ paymentHash: hash, preimageHex: preimage });

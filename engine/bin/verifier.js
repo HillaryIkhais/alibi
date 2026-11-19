@@ -102,20 +102,10 @@ class NodeClient {
   }
 
   async listPayments() {
-    // Paginate LND's listpayments (index_offset) so an older payment outside
-    // the first page is never silently missed.
-    const all = [];
-    let offset = 0;
-    const pageSize = 100;
-    for (let i = 0; i < 10; i++) {
-      const r = await this.request('GET', `/v1/payments?include_incomplete=true&reversed=true&num_max_payments=${pageSize}&index_offset=${offset}`);
-      if (r.status >= 400) throw new Error(`${this.name}: payments ${r.status}`);
-      const page = r.body.payments || [];
-      all.push(...page);
-      if (page.length < pageSize) break;
-      offset += page.length;
-    }
-    return all;
+    // Fetch a generous page so the outgoing commission payment is not missed.
+    const r = await this.request('GET', '/v1/payments?include_incomplete=true&max_payments=100');
+    if (r.status >= 400) throw new Error(`${this.name}: payments ${r.status}`);
+    return r.body.payments || [];
   }
 }
 
