@@ -47,9 +47,9 @@ const MUTATIONS = [
   {
     id: 'budget-cap',
     guard: 'BUDGET_EXCEEDED (atomic budget incl. routing fee)',
-    find: 'if (commBigInt > remaining) {',
+    find: 'if (totalCommitment > remaining) {',
     replace: 'if (false) { // MUTANT: budget-cap guard disabled',
-    expectFail: 'Budget exhaustion',
+    expectFail: 'First request (5,000,000 + 26,000 fee) rejected at 5,010,000 remaining',
   },
   {
     id: 'duplicate-hash',

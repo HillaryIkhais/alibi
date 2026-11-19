@@ -130,6 +130,36 @@ async function runTests() {
   assert(!t7d.valid && t7d.errors.some(e => e.code === 'BUDGET_EXCEEDED'),
     'Reserved routing fee counted against budget (second request blocked)');
 
+  // MANDATORY: the first reservation must be checked against its OWN fee
+  // allowance, not just subsequent requests. commissionMsat + routingFeeMsat
+  // <= remainingBudget.
+  //   5,000,000 + 26,000 = 5,026,000
+  //   remaining 5,010,000 -> 5,026,000 > 5,010,000 -> REJECTED
+  //   remaining 5,026,000 -> 5,026,000 <= 5,026,000 -> ACCEPTED (exact fit)
+  const policyFirstFee = productionPolicy({ maxBudgetMsat: 5_010_000 });
+  const t7e = policyFirstFee.validateCommission({
+    commissionMsat: 5000n * 1000n,
+    saleMsat: 100000n * 1000n,
+    marketplacePubkey: MARKETPLACE_PUBKEY,
+    paymentHash: crypto.randomBytes(32).toString('hex'),
+    commissionPayeePubkey: MARKETPLACE_PUBKEY,
+    routingFeeMsat: 26_000n,
+  });
+  assert(!t7e.valid && t7e.errors.some(e => e.code === 'BUDGET_EXCEEDED'),
+    'First request (5,000,000 + 26,000 fee) rejected at 5,010,000 remaining');
+
+  const policyFirstFee2 = productionPolicy({ maxBudgetMsat: 5_026_000 });
+  const t7f = policyFirstFee2.validateCommission({
+    commissionMsat: 5000n * 1000n,
+    saleMsat: 100000n * 1000n,
+    marketplacePubkey: MARKETPLACE_PUBKEY,
+    paymentHash: crypto.randomBytes(32).toString('hex'),
+    commissionPayeePubkey: MARKETPLACE_PUBKEY,
+    routingFeeMsat: 26_000n,
+  });
+  assert(t7f.valid, 'First request (5,000,000 + 26,000 fee) accepted at 5,026,000 remaining (exact fit)',
+    t7f.valid ? '' : t7f.errors.map(e => e.reason).join(', '));
+
   console.log('\n[4] Duplicate Payment Hash Tests');
   console.log('--------------------------------');
 
