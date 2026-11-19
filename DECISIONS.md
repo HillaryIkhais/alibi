@@ -30,14 +30,12 @@ in memory, redacts it, and fails closed without credentials.
 **Why:** A verifier that read Alibi's own database would be circular. Node-backed state is the only
 independent source of truth for settlement.
 
-## D6 — Do not claim 18/18 without a bundle (the hard call) — CLOSED
-**Decision:** The live 18/18 verifier claim was downgraded to **NOT REPRODUCIBLE** while no
-`evidence/bundle.json` existed and the regtest lab was desynced. That gap is now closed: the lab was
-rebuilt from clean volumes, a full same-hash settlement cycle was executed, and `bundle.json` was
-regenerated at 18/18, exit 0. All claims were restored to VERIFIED.
-**Why:** The proof doctrine is that no number appears without a regenerable artifact. Claiming 18/18
-without one would be the single lie that destroys every true claim — so the downgrade was correct at
-the time, and the restoration is equally evidence-driven. Restore procedure: `REPRODUCE.md` §7.
+## D6 — Do not claim 25/25 without a bundle (the hard call) — CLOSED
+**Decision:** The live verifier claim is regenerated at **25/25, exit 0** (now covering Alice's
+outgoing commission payment), committed in `evidence/bundle.json`, with the settlement cycle driven
+through `production-flow.json` (**17/17 stages**). All claims restored to VERIFIED.
+**Why:** The proof doctrine is that no number appears without a regenerable artifact. Restore
+procedure: `REPRODUCE.md` §7.
 
 ## D7 — Fix the reconcile/payCommission shadow bug
 **Decision:** Renamed the second `payCommission(paymentRequest)` (which referenced undefined
@@ -50,18 +48,20 @@ the time, and the restoration is equally evidence-driven. Restore procedure: `RE
 **Decision:** Removed `evidence/` from `.gitignore`; kept `*.macaroon`, `*.seed`, `*.key`, `*.cert`,
 `data/*.pass`, `*.log` blocked.
 **Why:** Proof artifacts must be visible to judges; credentials must never be. History scan confirms
-zero PEM keys, macaroons, or seeds across 1,664 reachable blobs.
+zero PEM keys, macaroons, or seeds across 1,709 reachable blobs.
 
 ## D9 — Correct stale numbers
 **Decision:** Reconcile the "buyer pays 105,000 sats" line in `harbor/README.md` and the "8/8" line in
-`docs/scorecard.md` with the authoritative 100,000 sats and 14/14.
+`docs/scorecard.md` with the authoritative 100,000 sats and 16/16.
 **Why:** Three surfaces disagreeing on the headline numbers is exactly what a judge uses to doubt
 everything else. One record, three surfaces.
 
 ## D10 — Scope cuts (explicit non-goals)
-Full NWC relay (NIP-44/NIP-47), SQLite durability in the build environment, multi-hop fee
-optimization, multi-root reservation, and mainnet deployment are all deliberately out of scope. They
-are listed as future work, never as demonstrated.
+The NWC relay transport (NIP-44/NIP-47 via `engine/bin/nwc-transport.js`) and SQLite durability in
+REAL mode are now **built and verified** (authority-results.json 13/13; production-flow 17/17 with
+durable SQLite; REAL mode fails closed if storage unavailable). Remaining deliberate non-goals:
+multi-hop fee optimization, multi-root reservation, and mainnet deployment. They are listed as
+future work, never as demonstrated.
 
 ## D11 — Verify the outgoing payment before releasing the buyer's HTLC
 **Decision:** `settleSale()` queries the vendor node's durable outgoing-payment record
@@ -75,8 +75,12 @@ keep the commission. The node is the only independent source of truth for the ou
 
 ## D12 — Two identities, and fail closed on unverified transport
 **Decision:** `HARBOR_MARKETPLACE_PUBKEY` (who may call) and `HARBOR_COMMISSION_PAYEE_PUBKEY` (where
-the Lightning invoice pays) are separate policy fields. `handleNip47()` refuses unsigned/unencrypted
-envelopes with `TRANSPORT_NOT_VERIFIED` instead of accepting a claimed pubkey from request JSON.
+the Lightning invoice pays) are separate policy fields. The NWC NIP-47 transport
+(`engine/bin/nwc-transport.js`) verifies BIP-340/Schnorr-signed kind:23194 events and NIP-44 v2
+decryption; unsigned/unverified envelopes fail closed with `TRANSPORT_NOT_VERIFIED` instead of
+accepting a claimed pubkey from request JSON. Plain HTTP `handleMethod()` does not authenticate
+commission operations by a caller-supplied pubkey (loopback-only demo token).
 **Why:** Treating one pubkey as both caller and destination lets an attacker authorize their own
-payee. With no Nostr/secp dependency in the build, faking event verification would be a lie; failing
-closed is honest and keeps the authority boundary testable (`authority-results.json`, 7/7).
+payee. With nostr-tools in the build, event verification is real (not faked); failing closed on any
+unverified envelope is honest and keeps the authority boundary testable (`authority-results.json`,
+13/13).

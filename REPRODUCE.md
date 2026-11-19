@@ -7,7 +7,7 @@ produce the stated output, the claim is false — trust the command, not the pro
 - Node.js 18+ (BigInt, `node:` built-ins)
 - Docker + Docker Compose (only for the optional live regtest lab)
 
-## 1. Policy conformance — 14/14 (no credentials, no Docker)
+## 1. Policy conformance — 16/16 (no credentials, no Docker)
 
 ```bash
 node engine/bin/adversarial-test.js
@@ -15,7 +15,7 @@ node engine/bin/adversarial-test.js
 
 Expected tail:
 ```
-TEST RESULTS: 14 passed, 0 failed
+TEST RESULTS: 16 passed, 0 failed
 VENDOR POLICY ENFORCEMENT: VERIFIED (production code)
 ```
 The suite `require()`s the PRODUCTION `CommissionPolicy` from `commission-service.js`; there is no
@@ -39,7 +39,7 @@ Writes `evidence/mutation-results.json`. Each guard is disabled in a throwaway c
 `commission-service.js`; the correlated test must FAIL. The working-tree source is never modified and
 is proven byte-identical afterward (SHA-256 recorded before and after).
 
-## 2a. NWC authority boundary — 7/7 (no credentials, no Docker)
+## 2a. NWC authority boundary — 13/13 (no credentials, no Docker)
 
 ```bash
 node engine/bin/authority-test.js
@@ -57,7 +57,7 @@ authenticated pubkey is threaded into the handler instead of being read from req
 node engine/bin/concurrency-test.js
 ```
 
-Expected: `5/5 passed`, `ATOMIC BUDGET RESERVATION: VERIFIED (single-process)`. Eight interleaved
+Expected: `8/8 passed`, `ATOMIC BUDGET RESERVATION: VERIFIED (single-process)`. Eight interleaved
 async arrivals against a 9-unit budget yield exactly three approvals (committed=9), no over-commit,
 and no double reserve. Scope is single-process atomicity only — not distributed/multi-root.
 
@@ -100,7 +100,7 @@ node engine/bin/evidence-manifest.js
 Writes `evidence/manifest.json`: SHA-256 of every proof artifact plus a manifest self-checksum.
 This is how a judge confirms the committed bytes are the bytes that were run.
 
-## 7. Live node-backed verifier — 18/18 (regtest)
+## 7. Live node-backed verifier — 25/25 (regtest)
 
 **Current state:** `evidence/bundle.json` is committed with `summary {passed: 18, failed: 0}`, exit 0,
 from a live three-node regtest cycle. It is regenerable with the steps below. Credentials are extracted
@@ -120,7 +120,7 @@ cd ..
 to exit initial block download, funds all three LND wallets, opens Alice↔Bob and Bob↔Carol channels,
 and seeds outbound liquidity with two invoice payments so the buyer can route through Bob.
 
-### 7b. Execute one full settlement cycle through the PRODUCTION service — 14/14
+### 7b. Execute one full settlement cycle through the PRODUCTION service — 16/16
 
 The authoritative cycle driver is `engine/bin/production-flow.js`. It calls the real
 `CommissionService` (hold invoice creation, `payCommission`, `settleSale`, `reconcile` code paths),
@@ -137,7 +137,7 @@ HARBOR_COMMISSION_PAYEE_PUBKEY=<bob-identity-pubkey> \
   node engine/bin/production-flow.js
 ```
 
-Expected: `RESULT: 14/14 production stages passed`, exit 0. It writes
+Expected: `RESULT: 16/16 production stages passed`, exit 0. It writes
 `evidence/production-flow.json` (no preimage or credentials) containing the authoritative
 `payment_hash`, the negative premature-settle assertion, the verified outgoing-payment result, and
 final node states. Use that hash as `ALIBI_PAYMENT_HASH` in §7c.

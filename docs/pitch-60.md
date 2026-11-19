@@ -32,4 +32,4 @@ That's Alibi — commission authority without wallet access."
 
 ---
 
-**Three anchors to keep reflexive:** invariant = "authority only narrows"; test count = 14/14 + 4/4 + 5/5 + live 18/18; identifier = settlement hash `0c3104c35224eb97bfb99af6d86e8d3cb9445b9f524080bf5f29aef87cd6c0c4` in `evidence/bundle.json`.
+**Three anchors to keep reflexive:** invariant = "authority only narrows"; test count = 16/16 + 4/4 + 8/8 + live 25/25; identifier = settlement hash `e01084644d8efb9975fe36f6948ed893a5d2cac2fb38114bea8dbe84d22ffa84` in `evidence/bundle.json`.

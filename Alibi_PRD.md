@@ -12,8 +12,8 @@ Alibi gives Lightning marketplaces conditional authority to collect an agreed co
 - **Act 1 — The problem:** African freelancers sell through marketplaces but refuse to give platforms unrestricted wallet control. Existing solutions take custody, grant broad permissions, require double payment, or trust later payments.
 - **Act 2 — The invariant:** Authority can only narrow, never widen. A commission connection's effective authority at any moment is a subset of its initial grant; reserved budget cannot be double-spent; payment hashes cannot be replayed with different parameters.
 - **Act 3 — The mechanism:** Vendor creates policy (5% max, payee allowlist, budget). Marketplace calls `make_commission_invoice` — vendor decodes BOLT11, validates payment hash match, checks payee against allowlist, enforces rate and budget atomically before creating the sale hold invoice. Buyer pays one invoice. Vendor pays commission from proceeds. Settlement is independent and verified.
-- **Act 4 — The attack lab:** 14 adversarial scenarios against the production policy: 20% commission blocked, unauthorized payee and marketplace caller blocked, budget exhaustion (including reserved routing fee) blocked, duplicate payment hash blocked; `pay_invoice` blocked at the NWC boundary. 7/7 authority checks additionally prove unsigned NIP-47 envelopes fail closed.
-- **Act 5 — The verification:** `production-flow.js` drives the real `CommissionService` through a full live cycle (`production-flow.json`: **14/14 stages**) — buyer HTLC held, premature settlement refused, outgoing commission payment verified on the vendor node, then the buyer released. `verifier.js` then checks sale/commission settlement, buyer payment, and the 100,000 = 5,000 + 95,000 split against all three LND nodes, producing `evidence/bundle.json`: **18/18 pass, exit 0**. Read-only macaroons; no preimage or credential in the artifacts. The deterministic layer is separately proven at 14/14 conformance + 4/4 production mutation. See `evidence/REAL_VS_MOCKED.md` and `REPRODUCE.md` §7.
+- **Act 4 — The attack lab:** 16 adversarial scenarios against the production policy: 20% commission blocked, unauthorized payee and marketplace caller blocked, budget exhaustion (including reserved routing fee) blocked, duplicate payment hash blocked; `pay_invoice` blocked at the NWC boundary. 13/13 authority checks additionally prove signed NIP-47 envelopes fail closed.
+- **Act 5 — The verification:** `production-flow.js` drives the real `CommissionService` through a full live cycle (`production-flow.json`: **17/17 stages**) — buyer HTLC held, premature settlement refused, outgoing commission payment verified on the vendor node, then the buyer released. `verifier.js` then checks sale/commission settlement, buyer payment, and the 100,000 = 5,000 + 95,000 split against all three LND nodes, producing `evidence/bundle.json`: **25/25 pass, exit 0**. Read-only macaroons; no preimage or credential in the artifacts. The deterministic layer is separately proven at 16/16 conformance + 4/4 production mutation. See `evidence/REAL_VS_MOCKED.md` and `REPRODUCE.md` §7.
 
 ## 3. Problem statement + ecosystem gap
 African digital service vendors want marketplace distribution but refuse to give platforms unrestricted Lightning wallet control. Existing solutions either take custody of funds, grant broad spending permissions, require buyers to pay twice, or trust vendors to pay commissions later — all unreliable or unsafe.
@@ -23,10 +23,10 @@ African digital service vendors want marketplace distribution but refuse to give
 ## 4. Goals (testable) and non-goals (explicitly not built)
 | Goals | Non-goals |
 |---|---|
-| 14/14 adversarial conformance tests pass | Full NWC relay (NIP-44/NIP-47) |
-| 7/7 NWC authority-boundary checks pass (`authority-results.json`) | SQLite durability in build environment |
-| Live 14/14 production-service transaction (`production-flow.json`) | SQLite restart recovery test |
-| Live 18/18 verifier result — VERIFIED (`bundle.json`, exit 0) | SQLite durability in build environment |
+| 16/16 adversarial conformance tests pass | Full NWC relay (NIP-44/NIP-47) |
+| 13/13 NWC authority-boundary checks pass (`authority-results.json`) | SQLite durability in build environment |
+| Live 17/17 production-service transaction (`production-flow.json`) | SQLite restart recovery test |
+| Live 25/25 verifier result — VERIFIED (`bundle.json`, exit 0) | SQLite durability in build environment |
 | Policy enforcement: 5% max commission, payee allowlist, atomic budget | Multi-hop payment optimization |
 | Full payment lifecycle: hold invoice → buyer pays → commission settled → seller receives earnings → revocation | Multi-currency support |
 | Independent node-backed verification | Multi-root reservation |
@@ -100,7 +100,7 @@ Each check is numbered, stable error codes, `retryable`, `nextAction`.
 ## 10. The attack lab (the 4 attacks the judge can run)
 | Attack | Defense | Test |
 |---|---|---|
-| 20% commission request against 5% limit | `EXCEEDS_MAX_PERCENT` rejection | `node engine/bin/adversarial-test.js` → 14/14 pass |
+| 20% commission request against 5% limit | `EXCEEDS_MAX_PERCENT` rejection | `node engine/bin/adversarial-test.js` → 16/16 pass |
 | Unauthorized commission payee | `UNAUTHORIZED_PAYEE` rejection | Same run |
 | Budget exhaustion (request > remaining) | `BUDGET_EXCEEDED` rejection | Same run |
 | Replayed payment hash with different parameters | `DUPLICATE_HASH` rejection | Same run |
@@ -120,7 +120,7 @@ pending → held → settled / released
 All transitions are validated by the policy engine. Illegal transitions throw.
 
 ## 13. Differentiator (built only after P0 is recorded)
-- **Alibi:** Wallet-side policy enforcement, 14/14 adversarial + 4/4 production-mutation-verified, 7/7 NWC authority boundary, base64-corrected LND endpoints, a live 14/14 production-service transaction (`production-flow.json`) and 18/18 node-backed settlement (`bundle.json`).
+- **Alibi:** Wallet-side policy enforcement, 16/16 adversarial + 4/4 production-mutation-verified, 13/13 NWC authority boundary, base64-corrected LND endpoints, a live 17/17 production-service transaction (`production-flow.json`) and 25/25 node-backed settlement (`bundle.json`).
 - **NobPay:** No commission permission
 - **Twese:** Hold invoices only, no policy
 - **SatsFarm:** No mainnet, sandbox only
@@ -168,13 +168,13 @@ README.md           pitch + proof + manual
 1. What exactly is broken? "Vendors give marketplaces unrestricted wallet access; no way to grant only commission authority."
 2. Why hasn't anyone fixed it? "LND REST endpoints were wrong (hex vs base64), commission handler had undefined params, duplicate payCommission."
 3. What is the one invariant? "Authority can only narrow, never widen."
-4. Show me it holding under concurrency. "14 adversarial scenarios all block; budget reservation is atomic."
-5. Show me it holding under attack. "The 14 adversarial tests block every widened-authority case; the production mutation harness proves each guard is load-bearing (4/4); the NWC authority boundary is 7/7 and refuses unsigned envelopes. The production service then completed a full live transaction (14/14 stages in `production-flow.json`), and the independent node-backed verifier ran against live regtest LND nodes: 18/18 pass, exit 0, with the full artifact in `evidence/bundle.json`."
+4. Show me it holding under concurrency. "16 adversarial scenarios all block; budget reservation is atomic (incl. first-request fee)."
+5. Show me it holding under attack. "The 16 adversarial tests block every widened-authority case; the production mutation harness proves each guard is load-bearing (4/4); the NWC authority boundary is 13/13 and refuses unsigned envelopes. The production service then completed a full live transaction (17/17 stages in `production-flow.json`), and the independent node-backed verifier ran against live regtest LND nodes: 25/25 pass, exit 0, with the full artifact in `evidence/bundle.json`."
 6. What happens on timeout / partial failure? "Uncertain outcomes are a state (`UNRESOLVED`), reconciled from source of truth."
-7. What is mocked? "SIM mode uses in-memory state (better-sqlite3 not in build env). Real mode uses LND read-only credentials."
+7. What is mocked? "SIM mode uses in-memory state; REAL mode uses durable SQLite (fails closed if unavailable). Real mode uses LND read-only credentials."
 8. What is on mainnet/testnet? "Regtest only. Not mainnet. Not trustless. Funds are non-redeemable testnet/regtest sats."
 9. Which sponsor primitive is load-bearing? "The `make_commission_invoice` NWC method with corrected LND endpoints."
-10. How is this different from nearest project? "Wallet-side policy enforcement; 14/14 adversarial + 4/4 mutation-verified; base64-corrected REST; and a live 18/18 node-backed settlement (`bundle.json`, exit 0)."
+10. How is this different from nearest project? "Wallet-side policy enforcement; 16/16 adversarial + 4/4 mutation-verified; base64-corrected REST; and a live 25/25 node-backed settlement (`bundle.json`, exit 0)."
 11. Can the model be wrong here? "The policy engine is deterministic BigInt math; a blocked case is demonstrable."
 12. What did you deliberately not build? "Full NWC relay, multi-hop payments, SQLite durability, mainnet."
 13. What breaks at 1000x? "Single-channel payment paths; no automated budget renewal; in-memory state loss on restart."

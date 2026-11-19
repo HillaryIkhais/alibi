@@ -6,9 +6,9 @@ captured from a running system, CUT THE SCENE — do not fake it.
 
 Target length: 2:30. Max: 3:00.
 
-> **Revision note (honesty):** An earlier cut removed the live "18/18 verifier
+> **Revision note (honesty):** An earlier cut removed the live "25/25 verifier
 > checks pass" scene because the artifact was missing. That scene is now
-> **RESTORED**: `evidence/bundle.json` is committed with 18/18, exit 0, from a
+> **RESTORED**: `evidence/bundle.json` is committed with 25/25, exit 0, from a
 > real three-node regtest cycle. Every scene below is reproducible by the
 > commands in `REPRODUCE.md`. Numbers must match `README.md` and
 > `evidence/REAL_VS_MOCKED.md`.
@@ -104,7 +104,7 @@ Voiceover:
 
 ---
 
-## 1:55–2:20 — Live settlement (screen: `bundle.json` summary, 18/18)
+## 1:55–2:20 — Live settlement (screen: `bundle.json` summary, 25/25)
 
 Show the committed artifact (captured from a real run, not typed):
 
@@ -132,30 +132,30 @@ Voiceover:
 
 Repository URL. One line, verbatim:
 
-*"Experimental NWC Commission Payments draft. Regtest. Policy 14/14 + 4/4;
-concurrency 5/5; live settlement 18/18 (`bundle.json`). Not mainnet, not
+*"Experimental NWC Commission Payments draft. Regtest. Policy 16/16 + 4/4;
+concurrency 8/8; live settlement 25/25 (`bundle.json`). Not mainnet, not
 trustless."*
 
 ---
 
 ## What was CUT and why
 
-- Nothing currently. The previously cut "18/18 verifier checks pass on live
+- Nothing currently. The previously cut "25/25 verifier checks pass on live
   regtest" scene was restored once `REPRODUCE.md` §7 produced a committed
   `evidence/bundle.json`. Restore any future scene only with a committed,
   regenerable artifact.
 
 ## Capture checklist
 
-- [ ] `adversarial-test.js` captured fresh (14/14 pass)
+- [ ] `adversarial-test.js` captured fresh (16/16 pass)
 - [ ] `mutation-test.js` captured fresh (4/4, byte-identical restore)
-- [ ] `concurrency-test.js` captured fresh (5/5, no over-commit)
+- [ ] `concurrency-test.js` captured fresh (8/8, no over-commit)
 - [ ] `commission-flow-simulator.js` shows FLOW COMPLETE + cancellation invariants
 - [ ] Pipeline (34) and auditor (10) outputs captured
-- [ ] `bundle.json` summary captured fresh from the committed artifact (18/18, exit 0)
+- [ ] `bundle.json` summary captured fresh from the committed artifact (25/25, exit 0)
 - [ ] No preimage, macaroon, seed, or connection secret on screen
 - [ ] Every spoken number matches `README.md` and `evidence/REAL_VS_MOCKED.md`
-- [ ] Any "18/18" or "verified on live regtest" claim appears only with `bundle.json` committed
+- [ ] Any "25/25" or "verified on live regtest" claim appears only with `bundle.json` committed
 
 ## Hard stops (do not publish if)
 

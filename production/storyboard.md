@@ -1,8 +1,8 @@
 # Alibi Checkout — Production Storyboard
 
-> **HONESTY REVISION — READ FIRST.** Scenes that previously claimed "18/18 verified on live
+> **HONESTY REVISION — READ FIRST.** Scenes that previously claimed "25/25 verified on live
 > regtest" were cut during the proof phase and are now **RESTORED**: `evidence/bundle.json` is
-> committed with 18/18 pass, exit 0, from a real three-node regtest cycle. A pre-existing rendered
+> committed with 25/25 pass, exit 0, from a real three-node regtest cycle. A pre-existing rendered
 > video that still says "not reproduced" is stale and must be re-rendered from the authoritative
 > script `docs/demo-script.md`; status source of truth is `evidence/REAL_VS_MOCKED.md`.
 
@@ -90,7 +90,7 @@
 
 ## Scene 7 — Close (1:20–1:30)
 
-**Visual:** Return to full product page. Sidebar + main view together. Status bar (verbatim, honest): "Policy verified 14/14 · guards 4/4 · SIM settlement · regtest." Repository URL appears.
+**Visual:** Return to full product page. Sidebar + main view together. Status bar (verbatim, honest): "Policy verified 16/16 · guards 4/4 · NWC authority 13/13 · concurrency 8/8 · live settlement 25/25 (bundle.json)." Repository URL appears.
 
 **Narration:** "Marketplaces can collect their fee. They cannot touch the wallet it came from. That's Alibi Checkout."
 
