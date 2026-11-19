@@ -635,9 +635,14 @@ class CommissionService {
     this.tlsCert = process.env.HARBOR_LND_TLS_CERT || null;
     this.lnd = (this.restUrl && this.macaroon) ? new LndClient(this.restUrl, this.macaroon, this.tlsCert) : null;
     this.mode = this.lnd ? 'REAL' : 'SIM';
-    this.auditLog = []; // in-memory fallback when SQLite unavailable
+    this.auditLog = []; // in-memory fallback when SQLite unavailable (SIM mode only)
     // Verified fee caps for outgoing payments when SQLite is unavailable.
     this.paymentCaps = new Map();
+    // REAL mode requires durable storage. Fail closed rather than silently
+    // falling back to ephemeral in-memory state for held payments and budget.
+    if (this.mode === 'REAL' && !db) {
+      throw new Error('REAL mode requires durable SQLite storage; better-sqlite3 unavailable or data dir not writable');
+    }
     console.log(`[alibi] mode=${this.mode} policy=5% max_budget=100,000sats`);
     console.log(`[alibi] marketplace=${this.policy.allowedMarketplace ?? '(none set)'} payee=${this.policy.allowedPayee ?? '(none set)'}`);
   }
@@ -749,13 +754,15 @@ class CommissionService {
     if (nodeNetwork !== 'regtest') {
       return { result: 'error', error: { code: 'WRONG_NETWORK', message: `node network is ${nodeNetwork || 'unknown'}, not regtest` } };
     }
-    const boltPrefix = String(commission.payment_request || '').slice(0, 6).toLowerCase();
+    // The decoded invoice has no payment_request field; inspect the input BOLT11
+    // string's prefix to establish its network.
+    const boltPrefix = String(commission_invoice || '').slice(0, 6).toLowerCase();
     const boltNetwork = boltPrefix === 'lnbcrt' ? 'regtest' :
                         boltPrefix === 'lnbc' ? 'mainnet' :
                         boltPrefix === 'lntb' ? 'testnet' :
                         boltPrefix === 'lntbs' ? 'signet' : 'unknown';
     if (boltNetwork !== nodeNetwork) {
-      return { result: 'error', error: { code: 'BOLT11_NETWORK_MISMATCH', message: `BOLT11 prefix ${boltPrefix} implies ${boltNetwork}, node is ${nodeNetwork}` } };
+      return { result: 'error', error: { code: 'BOLT11_NETWORK_MISMATCH', message: `BOLT11 prefix ${boltPrefix || '(empty)'} implies ${boltNetwork}, node is ${nodeNetwork}` } };
     }
 
     // Expiry: commission invoice must outlive the sale invoice by at least 300s
