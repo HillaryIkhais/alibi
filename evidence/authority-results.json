@@ -1,49 +1,80 @@
 {
   "suite": "alibi-nwc-authority/1.0",
-  "generated_at": "2026-11-18T23:15:15.545Z",
+  "generated_at": "2026-11-19T12:43:54.203Z",
   "checks": [
     {
-      "name": "handleMethod blocks unapproved caller",
-      "status": "pass",
-      "detail": "code=403 body={\"result\":\"error\",\"error\":{\"code\":\"UNAUTHORIZED_CONNECTION\",\"message\":\"Connection not approved for commission operations\"}}"
-    },
-    {
-      "name": "handleMethod blocks missing caller",
+      "name": "plain HTTP make_commission_invoice refused (TRANSPORT_REQUIRED)",
       "status": "pass",
       "detail": "code=403"
     },
     {
-      "name": "handleNip47 blocks unapproved event author",
+      "name": "pay_invoice blocked for approved caller",
       "status": "pass",
       "detail": "code=403"
     },
     {
-      "name": "handleNip47 fails closed on unverified envelope",
+      "name": "get_info returns commission policy via local HTTP",
       "status": "pass",
-      "detail": "code=401 body={\"result\":\"error\",\"error\":{\"code\":\"TRANSPORT_NOT_VERIFIED\",\"message\":\"Signed Nostr event / NIP-44 decryption not implemented; refusing unverified request envelope\"}}"
+      "detail": "code=200"
     },
     {
-      "name": "get_info exposes distinct marketplace and payee identities",
+      "name": "NIP-47 invalid signature rejected (TRANSPORT_NOT_VERIFIED)",
       "status": "pass",
-      "detail": "{\"version\":\"alibi-v1.0.0\",\"supported_tiers\":[\"basic\"],\"commission_policy\":{\"max_rate_ppm\":50000,\"max_fixed_msat\":0,\"payees\":[\"02d45125566fdb32a2c2e1f9086bcdf48038f5b432c2f281a82ff42817e11599f6\"],\"marketplace\":\"02d45125566fdb32a2c2e1f9086bcdf48038f5b432c2f281a82ff42817e11599f6\",\"max_routing_fee\":{\"base_msat\":1000,\"rate_ppm\":5000},\"budget_msat\":100000000},\"supported_methods\":[\"get_info\",\"lookup_invoice\",\"make_commission_invoice\"]}"
+      "detail": "reason=invalid BIP-340 signature on request event"
     },
     {
-      "name": "production policy rejects attacker marketplace caller",
+      "name": "NIP-47 unapproved event author rejected",
       "status": "pass",
-      "detail": "[{\"code\":\"UNAUTHORIZED_MARKETPLACE\",\"reason\":\"Marketplace not authorized\"}]"
+      "detail": "reason=request author is not the approved marketplace"
     },
     {
-      "name": "pay_invoice stays blocked for approved caller",
+      "name": "NIP-47 request not addressed to wallet rejected",
       "status": "pass",
-      "detail": "{\"result\":\"error\",\"error\":{\"code\":\"METHOD_NOT_ALLOWED\",\"message\":\"pay_invoice is restricted on commission-only connections\"}}"
+      "detail": "reason=request not addressed to this wallet (p tag missing/wrong)"
+    },
+    {
+      "name": "NIP-47 approved marketplace get_info processed",
+      "status": "pass",
+      "detail": "ok=true"
+    },
+    {
+      "name": "response event is kind:23195 signed by wallet",
+      "status": "pass",
+      "detail": "kind=23195"
+    },
+    {
+      "name": "NIP-47 make_commission_invoice routed to production handler",
+      "status": "pass",
+      "detail": "ok=true"
+    },
+    {
+      "name": "processRequest identity is verified event author, not request param",
+      "status": "pass",
+      "detail": "code=NO_LND result=error"
+    },
+    {
+      "name": "processRequest pay_invoice blocked by allowlist",
+      "status": "pass",
+      "detail": "code=METHOD_NOT_ALLOWED"
+    },
+    {
+      "name": "attacker connection approved",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "attacker connection revoked",
+      "status": "pass",
+      "detail": ""
     }
   ],
   "summary": {
-    "total": 7,
-    "passed": 7,
+    "total": 13,
+    "passed": 13,
     "failed": 0
   },
-  "scope": "NWC request-path authority boundary and identity separation. No LND calls; SIM mode.",
-  "limitation": "Full NIP-44 decryption and BIP-340 event verification are NOT implemented; the NIP-47 path fails closed rather than accepting unverified envelopes.",
-  "checksum_sha256": "7932b8b8824836f252988c365f1aa8441e507dd9851ab300079f3a36e1f60a2c"
+  "scope": "NWC request-path authority: verified BIP-340 signatures, NIP-44 v2 decryption, method allowlist, connection approval/revocation, no caller-supplied pubkey trust.",
+  "wallet_pubkey": "e9d06d46da3da6dc869052889532ed8f55e7c71c7798af0982e07710a57c397e",
+  "marketplace_pubkey": "0213d0697ebe2d0dacf50f5f48756d7c2879ad55cd7ef62623576b0b642072b0",
+  "checksum_sha256": "0030aa10859dcf94b259d6b0375f1346ffa97fbce6be8dacc4c5928da05bccf1"
 }

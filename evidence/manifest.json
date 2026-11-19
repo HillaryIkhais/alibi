@@ -1,52 +1,52 @@
 {
   "suite": "alibi-evidence-manifest/1.0",
-  "frozen_at": "2026-11-18T23:19:59.086Z",
+  "frozen_at": "2026-11-19T12:50:10.230Z",
   "artifact_count": 14,
   "artifacts": [
     {
       "path": "evidence/REAL_VS_MOCKED.md",
-      "bytes": 5196,
-      "sha256": "cfff9238a2f5bc72ea8528956b12f726645362d106a28736103576ee86d7e291"
+      "bytes": 5956,
+      "sha256": "bacbaf6d008c8dc6ee101d7c759aa73b71cfcfb20d489224b76696973be4a268"
     },
     {
       "path": "evidence/acceptance-gates.md",
-      "bytes": 2724,
-      "sha256": "fedb39d843877ab302bd0c9287051bd0964a87bf0618a2ba5ecfa723137c7f34"
+      "bytes": 3205,
+      "sha256": "5408b0bbf337d9f5049d00c856fa35db7b9aaf07fdad2e003742b872f3f763ff"
     },
     {
       "path": "evidence/adversarial-results.json",
-      "bytes": 1881,
-      "sha256": "2d693a5038e8fa13d2c68ac86ac40fead6f48219262c62059d56bb6290ce524f"
+      "bytes": 2141,
+      "sha256": "f52ec312fe11aebe057eb4dbd2befe23806a78a76f9c2d74ee276e56b7eb99aa"
     },
     {
       "path": "evidence/authority-results.json",
-      "bytes": 2415,
-      "sha256": "09ffa231b14813089261027139c15e06003bf198773bebcbf8955c20f58c950f"
+      "bytes": 2458,
+      "sha256": "f4d545a93f37239cd4932366805e7dcbca1e260119a5a52496fe1b78ffd3ef10"
     },
     {
       "path": "evidence/bundle.json",
-      "bytes": 4260,
-      "sha256": "0920e809e3f8a1ba8947aa0944745b3671e9786537d0f818648437dd69d89acb"
+      "bytes": 5478,
+      "sha256": "6b419a45f9022c6a83cde2554a028b8f181e3c7d47953b9355722bceaaa626c1"
     },
     {
       "path": "evidence/claims.json",
-      "bytes": 13769,
-      "sha256": "50242ec6ff7ca53a167d55f37e9df634448089e5cec5cfb1580dd1e5bcad71eb"
+      "bytes": 17644,
+      "sha256": "6672b9369f3a615cf66af84bafafbf78c6fb15eba3cdbdba84d5faf2f9074fad"
     },
     {
       "path": "evidence/concurrency-results.json",
-      "bytes": 1156,
-      "sha256": "6683ac1131e3e2aca406c715fdf4eec2d3ede9da33c5b8565f46fb0b5e5f16eb"
+      "bytes": 1633,
+      "sha256": "84c808fd5a72dd1f6c1544ae84fab263431426a8018dcfdfd24cfb95a60ea7c8"
     },
     {
       "path": "evidence/mutation-results.json",
-      "bytes": 2645,
-      "sha256": "3a7cb30e9563137278355649498755bb3268eb8d67bfb16f9992da0a1aabedbc"
+      "bytes": 2716,
+      "sha256": "b1fb624f9d16e66a2c146ffb04daf354286ab26a867a2b623f6d7107f2fcc134"
     },
     {
       "path": "evidence/production-flow.json",
-      "bytes": 3131,
-      "sha256": "25f99c32c25d638f0e5ccad6216bc83771c2aca4cc34b3f6e399fe85bd4d7055"
+      "bytes": 3547,
+      "sha256": "5c9031a4933701cb1beccb1ef82bfe8ade5283ef61fc553b5e23e63deb77b5c0"
     },
     {
       "path": "evidence/runs/2026-11-17-offline/adversarial-stdout.txt",
@@ -61,7 +61,7 @@
     {
       "path": "evidence/runs/2026-11-17-offline/credential-scan.txt",
       "bytes": 466,
-      "sha256": "1d4fd2e98fac0334d333494f404394f202aaacaae8cb28a8054d4acd0bcff80b"
+      "sha256": "2745a6e2456204b94fa6decd5d6d1e5427ecf29e06432fbe3c6b5e6bce040334"
     },
     {
       "path": "evidence/runs/2026-11-17-offline/pipeline-stdout.txt",
@@ -74,5 +74,5 @@
       "sha256": "5e0ccbdd689200076a51952b44b00440003f1ac59424d93a0b96d57fc219f7f0"
     }
   ],
-  "sha256_of_manifest": "f9fe24aeb9215111f52781d164046f489ba5eb16a2e6b9985e4bf1a6f60770ee"
+  "sha256_of_manifest": "eadd36b67de7a80eac0e52cedd58e96c357f786bf6ca35327b55cdf6293c9786"
 }

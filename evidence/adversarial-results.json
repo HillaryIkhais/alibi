@@ -1,6 +1,6 @@
 {
   "suite": "alibi-adversarial-conformance/2.0",
-  "generated_at": "2026-11-18T23:15:14.749Z",
+  "generated_at": "2026-11-19T12:43:53.656Z",
   "policy_under_test": "production:engine/bin/commission-service.js::CommissionPolicy",
   "checks": [
     {
@@ -52,6 +52,14 @@
       "status": "pass"
     },
     {
+      "test": "First request (5,000,000 + 26,000 fee) rejected at 5,010,000 remaining",
+      "status": "pass"
+    },
+    {
+      "test": "First request (5,000,000 + 26,000 fee) accepted at 5,026,000 remaining (exact fit)",
+      "status": "pass"
+    },
+    {
       "test": "First request with unique hash accepted",
       "status": "pass"
     },
@@ -61,10 +69,10 @@
     }
   ],
   "summary": {
-    "total": 14,
-    "passed": 14,
+    "total": 16,
+    "passed": 16,
     "failed": 0
   },
   "claim_scope": "Production policy-layer enforcement only. No LND nodes involved in this run. Live wallet-level verification is the node-backed verifier (verifier.js).",
-  "checksum_sha256": "327c30f9ea526dbdcae36d9584b4a11d42720e3d735274d3e95c37d246ad8f68"
+  "checksum_sha256": "7a40c112269293a8c6f89f79f6c9e0ed5e98031be254a796ac182be0b3ebbf5c"
 }

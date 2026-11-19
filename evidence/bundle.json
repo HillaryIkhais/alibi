@@ -1,8 +1,8 @@
 {
   "verifier": "alibi-independent-verifier/1.0",
-  "generated_at": "2026-11-18T22:59:38.045Z",
+  "generated_at": "2026-11-19T12:48:37.127Z",
   "network": "regtest",
-  "payment_hash": "0c3104c35224eb97bfb99af6d86e8d3cb9445b9f524080bf5f29aef87cd6c0c4",
+  "payment_hash": "e01084644d8efb9975fe36f6948ed893a5d2cac2fb38114bea8dbe84d22ffa84",
   "expected_amounts": {
     "sale_msat": "100000000",
     "commission_msat": "5000000",
@@ -12,17 +12,17 @@
   "nodes": {
     "alice": {
       "pubkey": "021e04514aa8bdf7a4847a34895c1ddcba1ecae6b68ec711415d48654933df0636",
-      "block_height": 121,
+      "block_height": 152,
       "synced_to_chain": true
     },
     "bob": {
       "pubkey": "02d45125566fdb32a2c2e1f9086bcdf48038f5b432c2f281a82ff42817e11599f6",
-      "block_height": 121,
+      "block_height": 152,
       "synced_to_chain": true
     },
     "carol": {
       "pubkey": "0343696695a044ed3dd174728b5d0987bb425447d2ca8dcf4de9d9a85b2a918baf",
-      "block_height": 121,
+      "block_height": 152,
       "synced_to_chain": true
     }
   },
@@ -58,7 +58,7 @@
       "id": "alice.sale.hash",
       "description": "sale invoice payment hash matches",
       "status": "pass",
-      "detail": "DDEEw1Ik65e/uZr22G6NPLlEW59SQIC/Xymu+HzWwMQ="
+      "detail": "4BCEZE2O+5l1/jb2lI7Yk6XSysL7OBFL6o2+hNIv+oQ="
     },
     {
       "id": "alice.sale.amount",
@@ -107,6 +107,40 @@
       "status": "pass"
     },
     {
+      "id": "alice.outgoing.exists",
+      "description": "outgoing commission payment found on vendor node",
+      "status": "pass"
+    },
+    {
+      "id": "alice.outgoing.status",
+      "description": "outgoing commission payment terminal SUCCEEDED",
+      "status": "pass",
+      "detail": "SUCCEEDED"
+    },
+    {
+      "id": "alice.outgoing.hash",
+      "description": "outgoing payment hash matches sale/commission hash",
+      "status": "pass",
+      "detail": "e01084644d8efb9975fe36f6948ed893a5d2cac2fb38114bea8dbe84d22ffa84"
+    },
+    {
+      "id": "alice.outgoing.amount",
+      "description": "outgoing paid 5000000 msat commission",
+      "status": "pass",
+      "detail": "got 5000000 msat"
+    },
+    {
+      "id": "alice.outgoing.fee_within_cap",
+      "description": "actual fee 0msat within policy cap",
+      "status": "pass",
+      "detail": "fee=0msat cap=276000msat"
+    },
+    {
+      "id": "alice.outgoing.preimage",
+      "description": "SHA256(outgoing preimage) == payment hash",
+      "status": "pass"
+    },
+    {
       "id": "math.split",
       "description": "sale == commission + vendor remainder",
       "status": "pass",
@@ -117,6 +151,12 @@
       "description": "commission / sale <= max_rate_ppm",
       "status": "pass",
       "detail": "50000 ppm"
+    },
+    {
+      "id": "math.seller_net",
+      "description": "seller net == gross - commission - actual fee",
+      "status": "pass",
+      "detail": "net=95000000msat"
     },
     {
       "id": "carol.payment.exists",
@@ -142,10 +182,10 @@
     }
   ],
   "summary": {
-    "total": 18,
-    "passed": 18,
+    "total": 25,
+    "passed": 25,
     "failed": 0
   },
   "trust_statement": "Independently executed, node-backed verification of a controlled regtest environment. Not a Bitcoin consensus proof and not a trustless attestation. Read-only credentials. No preimage, macaroon, or key material included.",
-  "checksum_sha256": "0480838b70386f62b4906c40c804ef56ee8c3775ef3e3d16d46a235f4d53aeb8"
+  "checksum_sha256": "a3b3e543ef3540e6059ff1f3bd9b8673ff6e6caf46d53ec05c8906c6cabcdb3a"
 }

@@ -1,9 +1,9 @@
 {
   "suite": "alibi-mutation-test/2.0 (production source)",
-  "generated_at": "2026-11-18T23:15:15.458Z",
+  "generated_at": "2026-11-19T12:43:53.935Z",
   "source_file": "engine/bin/commission-service.js",
-  "source_sha256_before": "0da1eb1da942c5677c5db423289967b05dc0fbc74970c7ca4e0e47dfa08058f9",
-  "source_sha256_after": "0da1eb1da942c5677c5db423289967b05dc0fbc74970c7ca4e0e47dfa08058f9",
+  "source_sha256_before": "8bdf4f9b99614b4917265974ca482675b81751f6ebcb2330bf7cd0e509ba1067",
+  "source_sha256_after": "8bdf4f9b99614b4917265974ca482675b81751f6ebcb2330bf7cd0e509ba1067",
   "byte_identical_restore": true,
   "method": "Each PRODUCTION guard disabled in a throwaway module; the correlated conformance test must fail.",
   "results": [
@@ -33,9 +33,9 @@
       "id": "budget-cap",
       "guard": "BUDGET_EXCEEDED (atomic budget incl. routing fee)",
       "production_file": "engine/bin/commission-service.js",
-      "mutation": "disabled: if (commBigInt > remaining) {",
-      "expected_test_to_fail": "Budget exhaustion",
-      "observed_fail_line": "✗ FAIL: Budget exhaustion: 5,000 sats request > 3,000 sats budget",
+      "mutation": "disabled: if (totalCommitment > remaining) {",
+      "expected_test_to_fail": "First request (5,000,000 + 26,000 fee) rejected at 5,010,000 remaining",
+      "observed_fail_line": "✗ FAIL: First request (5,000,000 + 26,000 fee) rejected at 5,010,000 remaining",
       "mutant_exit_code": 1,
       "verdict": "production guard is load-bearing",
       "passed": true
@@ -57,5 +57,5 @@
     "load_bearing": 4,
     "dead_guards": 0
   },
-  "checksum_sha256": "6648876fdee1967f68247e6b75fe521ca8ff5bbce25ac113ef3e4f06d79d570c"
+  "checksum_sha256": "b7dcf8042f46027eb47097f4117c22d9ef32571eb633046331fb8bc93371e240"
 }

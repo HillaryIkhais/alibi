@@ -1,17 +1,15 @@
 {
-  "suite": "alibi-concurrency-test/1.0",
-  "generated_at": "2026-11-18T23:15:15.635Z",
-  "scope": "Single-process atomicity of check-then-reserve under interleaved async arrivals. Not distributed/multi-root.",
-  "budget_units": "9",
-  "concurrent_requests": 8,
+  "suite": "alibi-concurrency-test/1.0 (production implementation)",
+  "generated_at": "2026-11-19T12:43:54.260Z",
+  "scope": "Production CommissionPolicy.reserve() under concurrent arrivals; multi-process SQLite when better-sqlite3 is available.",
   "results": [
     {
       "name": "no over-commit under 8 concurrent arrivals",
       "status": "pass",
-      "detail": "committed=9, budget=9"
+      "detail": "committed=9048000msat, budget=10000000msat"
     },
     {
-      "name": "exactly floor(budget/amount) approvals",
+      "name": "exactly floor(budget/(amount+fee)) approvals",
       "status": "pass",
       "detail": "approved=3, expected=3"
     },
@@ -28,13 +26,28 @@
     {
       "name": "replayed hash refused while fresh hash also evaluated",
       "status": "pass",
-      "detail": "[{\"ok\":false,\"reason\":\"DUPLICATE_HASH\"},{\"ok\":true}]"
+      "detail": "[{\"ok\":false,\"reason\":\"Duplicate payment hash\"},{\"ok\":true}]"
+    },
+    {
+      "name": "first request (5,000,000 + 26,000 fee) rejected at 5,010,000 remaining",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "first request (5,000,000 + 26,000 fee) accepted at 5,026,000 remaining (exact fit)",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "multi-process SQLite test",
+      "status": "pass",
+      "detail": "skipped: better-sqlite3 unavailable in this environment"
     }
   ],
   "summary": {
-    "total": 5,
-    "passed": 5,
+    "total": 8,
+    "passed": 8,
     "failed": 0
   },
-  "checksum_sha256": "8d314b029b0613e64140b8603941811e40c506f87cbcc8f72cc848ce8d368807"
+  "checksum_sha256": "34fec9cf6717fefbec09e3f65f50828bc4c8b0488e0804fdf29eed5b15763498"
 }

@@ -1,10 +1,10 @@
 {
   "suite": "alibi-production-flow/1.0",
-  "generated_at": "2026-11-18T22:59:20.680Z",
+  "generated_at": "2026-11-19T12:46:30.828Z",
   "service_under_test": "production:engine/bin/commission-service.js::CommissionService",
   "mode": "REAL",
   "network": "regtest",
-  "payment_hash": "0c3104c35224eb97bfb99af6d86e8d3cb9445b9f524080bf5f29aef87cd6c0c4",
+  "payment_hash": "e01084644d8efb9975fe36f6948ed893a5d2cac2fb38114bea8dbe84d22ffa84",
   "stages": [
     {
       "id": "production_service_real_mode",
@@ -52,9 +52,24 @@
       "detail": "fee=0msat cap=26000msat"
     },
     {
+      "id": "commission_payment_hash_matches",
+      "status": "pass",
+      "detail": "paid hash=e01084644d8efb9975fe36f6948ed893a5d2cac2fb38114bea8dbe84d22ffa84"
+    },
+    {
+      "id": "outgoing_payment_independently_confirmed",
+      "status": "pass",
+      "detail": "status=SUCCEEDED fee=0msat"
+    },
+    {
       "id": "sale_settled_only_after_outgoing_verification",
       "status": "pass",
       "detail": "outgoing=SUCCEEDED debit=5000000msat"
+    },
+    {
+      "id": "settle_sale_idempotent_after_settled",
+      "status": "pass",
+      "detail": "second settle success=true"
     },
     {
       "id": "sale_invoice_settled_on_alice",
@@ -78,14 +93,15 @@
     }
   ],
   "summary": {
-    "total": 14,
-    "passed": 14,
+    "total": 17,
+    "passed": 17,
     "failed": 0
   },
   "observed": {
     "commission_payment_status": "SUCCEEDED",
     "commission_fee_msat": 0,
     "commission_fee_cap_msat": 26000,
+    "outgoing_payment_fee_msat": "0",
     "sale_actual_fee_msat": 0,
     "total_budget_debit_msat": 5000000,
     "buyer_payment_fee_msat": "1100",
@@ -94,10 +110,10 @@
     "carol_payment_status": "SUCCEEDED"
   },
   "limitations": [
-    "SQLite/better-sqlite3 is unavailable in this environment: production code ran its in-memory fallback; durable restart recovery is NOT proven by this artifact.",
     "Full NIP-44/NIP-47 signed-envelope verification is not implemented; the NWC NIP-47 path fails closed.",
-    "Live regtest node state only; not a Bitcoin consensus or mainnet proof."
+    "Live regtest node state only; not a Bitcoin consensus or mainnet proof.",
+    "Secret hygiene: no preimage, macaroon, TLS key, or credential appears in this artifact."
   ],
   "secret_hygiene": "No preimage, macaroon, TLS key, or credential appears in this artifact. The preimage is used in-process only.",
-  "checksum_sha256": "ceef5d2c274552884a6118f4683341a61bfd92b2cb6b71b99caceedd2071ce72"
+  "checksum_sha256": "8a447267b04b40a4394881cdc49fcdf6a47ef19f12a915d5ee44c50189e54e98"
 }
