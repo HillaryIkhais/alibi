@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alibi — Seller Login</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0b; color: #e8e8ea; height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .card { background: #1a1a1e; border: 1px solid #2d2d34; border-radius: 24px; padding: 40px; width: 100%; max-width: 400px; }
+  .logo { width: 48px; height: 48px; background: linear-gradient(135deg, #f59e0b, #f97316); border-radius: 14px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 18px; margin-bottom: 24px; }
+  h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.02em; }
+  p { color: #a1a1aa; font-size: 0.95rem; margin-bottom: 24px; line-height: 1.5; }
+  .form-group { margin-bottom: 16px; }
+  label { display: block; font-size: 0.85rem; font-weight: 600; color: #a1a1aa; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+  input { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #2d2d34; background: #0a0a0b; color: #e8e8ea; font-size: 1rem; }
+  input:focus { outline: none; border-color: #f59e0b; }
+  .btn { width: 100%; padding: 14px; border-radius: 12px; font-weight: 600; font-size: 1rem; border: none; cursor: pointer; background: #f59e0b; color: #000; margin-top: 8px; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .env { margin-top: 24px; padding: 16px; background: #0f172a; border-radius: 10px; font-size: 0.8rem; color: #94a3b8; border: 1px solid #334155; }
+  .env b { color: #f59e0b; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">A</div>
+  <h1>Alibi</h1>
+  <p>Seller login — connect to your creator wallet to approve marketplace commissions and manage your sales.</p>
+  <form id="loginForm">
+    <div class="form-group">
+      <label>Seller name</label>
+      <input type="text" id="creatorName" value="Amina" required>
+    </div>
+    <button class="btn" id="loginBtn">Connect Wallet</button>
+  </div>
+  <div class="env">
+    <div><b>Environment:</b> Regtest (controlled lab)</div>
+    <div><b>Vendor node:</b> Alice (127.0.0.1:10039)</div>
+    <div id="envStatus">Connecting…</div>
+  </div>
+  <div id="error" style="color: #ef4444; font-size: 0.9rem; margin-top: 16px;"></div>
+</div>
+<script>
+const API_BASE = '';
+const envStatus = document.getElementById('envStatus');
+const loginBtn = document.getElementById('loginBtn');
+const error = document.getElementById('error');
+
+async function checkEnv() {
+  try {
+    const res = await fetch(`${API_BASE}/api/creator/session`);
+    if (res.ok) {
+      envStatus.textContent = 'Already connected — redirecting…';
+      window.location.href = '/creator/workspace.html';
+    }
+  } catch {}
+}
+checkEnv();
+
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  loginBtn.disabled = true;
+  loginBtn.textContent = 'Connecting…';
+  error.textContent = '';
+  try {
+    const res = await fetch(`${API_BASE}/api/creator/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ creator_name: document.getElementById('creatorName').value })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'Login failed');
+    window.location.href = '/creator/workspace.html';
+  } catch (err) {
+    error.textContent = err.message;
+    loginBtn.disabled = false;
+    loginBtn.textContent = 'Connect Wallet';
+  }
+});
+</script>
+</body>
+</html>

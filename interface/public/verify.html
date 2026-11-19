@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alibi — Independent Verifier</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0b; color: #e8e8ea; line-height: 1.6; }
+  .container { max-width: 560px; margin: 0 auto; padding: 24px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+  .logo { width: 32px; height: 32px; background: linear-gradient(135deg, #f59e0b, #f97316); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; }
+  h1 { font-size: 1rem; font-weight: 600; letter-spacing: -0.02em; }
+  .card { background: #1a1a1e; border: 1px solid #2d2d34; border-radius: 16px; padding: 24px; margin-bottom: 20px; }
+  .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 16px; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.05em; }
+  .verify-form { display: flex; gap: 8px; margin-bottom: 24px; }
+  .verify-input { flex: 1; padding: 12px; border-radius: 10px; border: 1px solid #2d2d34; background: #0a0a0b; color: #e8e8ea; font-size: 0.9rem; font-family: 'SF Mono', Monaco, monospace; }
+  .btn { padding: 12px 20px; border-radius: 10px; font-weight: 600; font-size: 0.9rem; border: none; cursor: pointer; background: #f59e0b; color: #000; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .result-card { background: #0f172a; border: 1px solid #334155; border-radius: 16px; padding: 20px; margin-top: 16px; }
+  .result-card h3 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin-bottom: 12px; }
+  .check-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #2d2d34; font-size: 0.9rem; }
+  .check-row:last-child { border-bottom: none; }
+  .check-label { color: #a1a1aa; }
+  .check-value { font-family: 'SF Mono', Monaco, monospace; font-size: 0.85rem; font-weight: 600; }
+  .check-pass { color: #22c55e; }
+  .check-fail { color: #ef4444; }
+  .check-wait { color: #f59e0b; }
+  .spinner { width: 16px; height: 16px; border: 2px solid rgba(245, 158, 11, 0.3); border-top-color: #f59e0b; border-radius: 50%; animation: spin 1s linear infinite; display: inline-block; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .summary { margin-top: 16px; padding: 12px; background: #1a1a1e; border-radius: 10px; font-size: 0.9rem; }
+  .summary-pass { border-left: 4px solid #22c55e; }
+  .summary-fail { border-left: 4px solid #ef4444; }
+  .error { color: #ef4444; font-size: 0.9rem; margin-top: 10px; }
+  .note { margin-top: 16px; font-size: 0.85rem; color: #94a3b8; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="logo">A</div>
+    <h1>Independent Verifier</h1>
+  </header>
+
+  <div class="card">
+    <h2>Verify Transaction</h2>
+    <p style="margin-bottom: 16px; color: #a1a1aa; font-size: 0.9rem;">Enter a payment hash to independently verify the transaction on all three LND nodes (read-only macaroons).</p>
+    <div class="verify-form">
+      <input type="text" id="paymentHash" class="verify-input" placeholder="Enter payment hash (64 hex chars)" />
+      <button class="btn" id="verifyBtn">Verify</button>
+    </div>
+    <div id="error" class="error"></div>
+  </div>
+
+  <div id="result" style="display:none;" class="result-card">
+    <div class="result-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.05em; color:#a1a1aa;">Verification Results</h3>
+      <span id="overallStatus" class="check-wait">Verifying…</span>
+    </div>
+    <div class="check-row"><span class="check-label">Alice sale invoice</span><span class="check-value check-wait" id="chkAliceSale">—</span></div>
+    <div class="check-row"><span class="check-label">Bob commission invoice</span><span class="check-value check-wait" id="chkBobComm">—</span></div>
+    <div class="check-row"><span class="check-label">Carol buyer payment</span><span class="check-value check-wait" id="chkCarolPay">—</span></div>
+    <div class="check-row"><span class="check-label">Alice outgoing commission</span><span class="check-value check-wait" id="chkAliceOut">—</span></div>
+    <div class="check-row"><span class="check-label">Preimage hash match</span><span class="check-value check-wait" id="chkPreimage">—</span></div>
+    <div class="check-row"><span class="check-label">Fee within cap</span><span class="check-value check-wait" id="chkFee">—</span></div>
+    <div class="check-row"><span class="check-label">Seller net reconciliation</span><span class="check-value check-wait" id="chkNet">—</span></div>
+  </div>
+
+  <div id="summary" class="summary"></div>
+
+  <div class="note">
+    <strong>Independence:</strong> This verifier queries all three LND nodes directly using read-only macaroons. It does not trust Alibi's application database. The preimage is checked in memory (SHA-256 compared to the payment hash) and is never written anywhere.
+  </div>
+</div>
+
+<script>
+const API_BASE = '';
+const verifyBtn = document.getElementById('verifyBtn');
+const paymentHashInput = document.getElementById('paymentHash');
+const resultDiv = document.getElementById('result');
+const errorDiv = document.getElementById('error');
+const summaryDiv = document.getElementById('summary');
+
+const checkEls = {
+  aliceSale: document.getElementById('chkAliceSale'),
+  bobComm: document.getElementById('chkBobComm'),
+  carolPay: document.getElementById('chkCarolPay'),
+  aliceOut: document.getElementById('chkAliceOut'),
+  preimage: document.getElementById('chkPreimage'),
+  fee: document.getElementById('chkFee'),
+  net: document.getElementById('chkNet'),
+};
+
+function setCheck(el, passed, text) {
+  el.textContent = text;
+  el.className = 'check-value ' + (passed ? 'check-pass' : 'check-fail');
+}
+
+async function verify() {
+  const hash = paymentHashInput.value.trim();
+  if (!/^[0-9a-f]{64}$/.test(hash)) {
+    errorDiv.textContent = 'Please enter a valid 64-character hex payment hash';
+    return;
+  }
+  errorDiv.textContent = '';
+  resultDiv.style.display = 'block';
+  summaryDiv.innerHTML = '';
+  verifyBtn.disabled = true;
+  verifyBtn.textContent = 'Verifying…';
+
+  Object.values(checkEls).forEach(el => {
+    el.textContent = 'Verifying…';
+    el.className = 'check-value check-wait';
+  });
+
+  try {
+    const res = await fetch(`${API_BASE}/api/verify/${hash}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'Verification failed');
+
+    const r = data.result;
+    setCheck(checkEls.aliceSale, r.aliceSale, r.aliceSale ? 'Settled ✓' : 'Not settled ✗');
+    setCheck(checkEls.bobComm, r.bobCommission, r.bobCommission ? 'Settled ✓' : 'Not settled ✗');
+    setCheck(checkEls.carolPay, r.carolPayment, r.carolPayment ? 'Finalized ✓' : 'Not finalized ✗');
+    setCheck(checkEls.aliceOut, r.aliceOutgoing, r.aliceOutgoing ? 'SUCCEEDED ✓' : 'Failed/Missing ✗');
+    setCheck(checkEls.preimage, r.preimageMatch, r.preimageMatch ? 'Matches ✓' : 'Mismatch ✗');
+    setCheck(checkEls.fee, r.feeWithinCap, r.feeWithinCap ? 'Within cap ✓' : 'Exceeds cap ✗');
+    setCheck(checkEls.net, r.sellerNet, r.sellerNet ? 'Reconciled ✓' : 'Mismatch ✗');
+
+    const allPass = r.aliceSale && r.bobCommission && r.carolPayment && r.aliceOutgoing && r.preimageMatch && r.feeWithinCap && r.sellerNet;
+    summaryDiv.innerHTML = `
+      <div class="summary ${allPass ? 'summary-pass' : 'summary-fail'}">
+        <strong>${allPass ? '✓ Transaction Verified' : '✗ Verification Failed'}</strong><br>
+        ${allPass ? 'All payment legs confirmed on LND nodes.' : 'One or more checks failed — transaction may be incomplete or invalid.'}
+      </div>`;
+  } catch (e) {
+    errorDiv.textContent = e.message;
+    Object.values(checkEls).forEach(el => {
+      el.textContent = 'Error';
+      el.className = 'check-value check-fail';
+    });
+  } finally {
+    verifyBtn.disabled = false;
+    verifyBtn.textContent = 'Verify';
+  }
+}
+
+verifyBtn.addEventListener('click', verify);
+paymentHashInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') verify(); });
+</script>
+</body>
+</html>

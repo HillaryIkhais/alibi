@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alibi — Seller Workspace</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0b; color: #e8e8ea; }
+  .topbar { background: #1a1a1e; border-bottom: 1px solid #2d2d34; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .logo { width: 32px; height: 32px; background: linear-gradient(135deg, #f59e0b, #f97316); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; margin-right: 12px; }
+  .topbar h1 { font-size: 1rem; font-weight: 600; }
+  .topbar .user { font-size: 0.85rem; color: #a1a1aa; }
+  .topbar .env { font-size: 0.75rem; color: #f59e0b; font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; padding: 24px; max-width: 1200px; margin: 0 auto; }
+  .card { background: #1a1a1e; border: 1px solid #2d2d34; border-radius: 16px; padding: 24px; }
+  .card h2 { font-size: 0.9rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #a1a1aa; margin-bottom: 16px; }
+  .stat { font-size: 1.5rem; font-weight: 700; margin-bottom: 4px; }
+  .stat-label { font-size: 0.8rem; color: #a1a1aa; }
+  .wallet-pubkey { font-family: 'SF Mono', Monaco, monospace; font-size: 0.75rem; color: #94a3b8; word-break: break-all; margin-top: 8px; }
+  .btn { padding: 10px 16px; border-radius: 10px; font-weight: 600; font-size: 0.9rem; border: none; cursor: pointer; margin-right: 8px; margin-top: 12px; }
+  .btn-primary { background: #f59e0b; color: #000; }
+  .btn-danger { background: #ef4444; color: #fff; }
+  .btn-secondary { background: #2d2d34; color: #e8e8ea; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+  .badge-approved { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
+  .badge-revoked { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+  .badge-pending { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+  table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+  th { text-align: left; font-size: 0.75rem; color: #a1a1aa; padding: 12px 8px; font-weight: 600; text-transform: uppercase; }
+  td { padding: 12px 8px; border-bottom: 1px solid #2d2d34; font-size: 0.9rem; }
+  tr:hover { background: rgba(255,255,255,0.02); }
+  .amount { font-family: 'SF Mono', Monaco, monospace; font-size: 0.85rem; }
+  .state-badge { display: inline-block; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; }
+  .state-settled { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
+  .state-waiting { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+  .state-canceled { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+  .empty { text-align: center; color: #a1a1aa; padding: 32px; }
+  .error { color: #ef4444; font-size: 0.9rem; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div style="display: flex; align-items: center;">
+    <div class="logo">A</div>
+    <h1>Alibi — Seller Workspace</h1>
+  </div>
+  <div class="env" id="envBadge">Regtest</div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h2>Creator Profile</h2>
+    <div class="stat" id="creatorName">—</div>
+    <div class="stat-label">Shop name</div>
+    <div class="stat" id="shopName">—</div>
+    <div class="stat-label">Wallet pubkey</div>
+    <div class="wallet-pubkey" id="walletPubkey">—</div>
+    <div class="stat-label">Network</div>
+    <div class="stat" id="walletNetwork">—</div>
+    <div class="stat-label">Synced to chain</div>
+    <div class="stat" id="walletSynced">—</div>
+  </div>
+
+  <div class="card">
+    <h2>Commission Policy</h2>
+    <div class="stat" id="ratePpm">—</div>
+    <div class="stat-label">Max commission rate</div>
+    <div class="stat-label">Commission payee</div>
+    <div class="wallet-pubkey" id="payeePubkey">—</div>
+    <div class="stat-label">Max budget</div>
+    <div class="stat" id="maxBudget">—</div>
+    <div class="stat-label">Fee cap (base + rate)</div>
+    <div class="stat" id="feeCap">—</div>
+  </div>
+
+  <div class="card">
+    <h2>Marketplace Connection</h2>
+    <div class="stat" id="marketplacePubkey">—</div>
+    <div class="stat-label">Marketplace pubkey</div>
+    <div class="stat" id="connectionStatus">—</div>
+    <div class="stat-label">Connection status</div>
+    <button class="btn btn-primary" id="approveBtn">Approve Marketplace</button>
+    <button class="btn btn-danger" id="revokeBtn" style="display:none;">Revoke Permission</button>
+    <div id="approveError" class="error"></div>
+  </div>
+
+  <div class="card">
+    <h2>Budget</h2>
+    <div class="stat" id="budgetRemaining">—</div>
+    <div class="stat-label">Remaining budget</div>
+    <div class="stat" id="budgetSpent">—</div>
+    <div class="stat-label">Spent</div>
+    <div class="stat" id="budgetReserved">—</div>
+    <div class="stat-label">Reserved</div>
+  </div>
+
+  <div class="card" style="grid-column: 1 / -1;">
+    <h2>Sales History</h2>
+    <table id="salesTable">
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>Gross</th>
+          <th>Commission</th>
+          <th>Net</th>
+          <th>State</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody id="salesBody">
+        <tr><td colspan="6" class="empty">Loading sales…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const API_BASE = '';
+let currentOrderId = null;
+
+async function loadProfile() {
+  const res = await fetch(`${API_BASE}/api/creator/profile`);
+  if (!res.ok) { window.location.href = '/creator/login.html'; return; }
+  const d = await res.json();
+  document.getElementById('creatorName').textContent = d.creator.creator_name;
+  document.getElementById('shopName').textContent = d.creator.shop_name;
+  document.getElementById('walletPubkey').textContent = d.wallet.pubkey;
+  document.getElementById('walletNetwork').textContent = d.wallet.network;
+  document.getElementById('walletSynced').textContent = d.wallet.synced ? 'Yes' : 'No';
+  document.getElementById('ratePpm').textContent = (d.policy.max_rate_ppm / 100).toFixed(2) + '%';
+  document.getElementById('payeePubkey').textContent = d.policy.allowed_payee;
+  document.getElementById('maxBudget').textContent = (d.policy.max_budget_msat / 1000).toLocaleString() + ' sats';
+  document.getElementById('feeCap').textContent = (d.policy.max_budget_msat > 0 ? ((d.policy.base_msat + d.policy.rate_ppm * d.policy.max_budget_msat / 1e6) / 1000).toFixed(0) : '—') + ' sats';
+  document.getElementById('budgetRemaining').textContent = (d.budget.remainingMsat / 1000).toLocaleString() + ' sats';
+  document.getElementById('budgetSpent').textContent = (d.budget.spentMsat / 1000).toLocaleString() + ' sats';
+  document.getElementById('budgetReserved').textContent = (d.budget.reservedMsat / 1000).toLocaleString() + ' sats';
+
+  const conn = d.connection;
+  document.getElementById('marketplacePubkey').textContent = conn.marketplace_pubkey;
+  const statusEl = document.getElementById('connectionStatus');
+  const approveBtn = document.getElementById('approveBtn');
+  const revokeBtn = document.getElementById('revokeBtn');
+  if (conn.revoked) {
+    statusEl.innerHTML = '<span class="badge badge-revoked">Revoked</span>';
+    approveBtn.style.display = 'none';
+    revokeBtn.style.display = 'none';
+  } else if (conn.approved) {
+    statusEl.innerHTML = '<span class="badge badge-approved">Approved</span>';
+    approveBtn.style.display = 'none';
+    revokeBtn.style.display = 'inline-block';
+  } else {
+    statusEl.innerHTML = '<span class="badge badge-pending">Pending</span>';
+    approveBtn.style.display = 'inline-block';
+    revokeBtn.style.display = 'none';
+  }
+}
+
+async function loadSales() {
+  const res = await fetch(`${API_BASE}/api/creator/sales`);
+  if (!res.ok) return;
+  const d = await res.json();
+  const tbody = document.getElementById('salesBody');
+  tbody.innerHTML = '';
+  if (d.sales.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">No sales yet</td></tr>';
+    return;
+  }
+  d.sales.forEach(s => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="product-title">${s.product_title || 'Unknown product'}</span></td>
+      <td class="amount">${(s.gross_msat / 1000).toLocaleString()} sats</td>
+      <td class="amount">${(s.commission_msat / 1000).toLocaleString()} sats</td>
+      <td class="amount">${(s.net_msat / 1000).toLocaleString()} sats</td>
+      <td><span class="state-badge state-${s.state}">${s.state}</span></td>
+      <td>${new Date(s.created_at * 1000).toLocaleDateString()}</td>
+    </tr>`;
+    tbody.appendChild(tr);
+  });
+}
+
+async function approveMarketplace() {
+  const btn = document.getElementById('approveBtn');
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${API_BASE}/api/creator/marketplace/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ marketplace_pubkey: document.getElementById('marketplacePubkey').textContent })
+    });
+    if (!res.ok) throw new Error((await res.json()).error?.message || 'Approval failed');
+    loadProfile();
+  } catch (e) {
+    document.getElementById('approveError').textContent = e.message;
+    btn.disabled = false;
+  }
+}
+
+async function revokeMarketplace() {
+  if (!confirm('Revoke marketplace permission? This will block new commission requests.')) return;
+  const btn = document.getElementById('revokeBtn');
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${API_BASE}/api/creator/marketplace/revoke`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ connection_id: 'conn-0001' })
+    });
+    if (!res.ok) throw new Error((await res.json()).error?.message || 'Revoke failed');
+    loadProfile();
+  } catch (e) {
+    alert('Revoke failed: ' + e.message);
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('approveBtn').addEventListener('click', approveMarketplace);
+document.getElementById('revokeBtn').addEventListener('click', revokeMarketplace);
+
+loadProfile();
+loadSales();
+setInterval(loadProfile, 5000);
+setInterval(loadSales, 5000);
+</script>
+</body>
+</html>

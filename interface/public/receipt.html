@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alibi — Purchase Receipt</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0b; color: #e8e8ea; line-height: 1.6; }
+  .container { max-width: 480px; margin: 0 auto; padding: 24px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+  .logo { width: 32px; height: 32px; background: linear-gradient(135deg, #f59e0b, #f97316); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; }
+  h1 { font-size: 1rem; font-weight: 600; letter-spacing: -0.02em; }
+  .receipt-card { background: #1a1a1e; border: 1px solid #2d2d34; border-radius: 16px; padding: 24px; margin-bottom: 20px; }
+  .receipt-card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 16px; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.05em; }
+  .row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.95rem; }
+  .row.label { color: #a1a1aa; }
+  .row.value { color: #e8e8ea; font-weight: 600; }
+  .row.total { border-top: 1px solid #2d2d34; padding-top: 16px; margin-top: 16px; font-size: 1.1rem; font-weight: 700; }
+  .status-badge { display: inline-block; padding: 6px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; margin-bottom: 16px; }
+  .status-settled { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
+  .status-waiting { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+  .btn { width: 100%; padding: 14px; border-radius: 12px; font-weight: 600; font-size: 1rem; border: none; cursor: pointer; background: #f59e0b; color: #000; margin-top: 16px; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .amount { font-family: 'SF Mono', Monaco, monospace; }
+  .hash { font-family: 'SF Mono', Monaco, monospace; font-size: 0.75rem; color: #94a3b8; word-break: break-all; margin-top: 4px; }
+  .download-btn { width: 100%; padding: 14px; border-radius: 12px; font-weight: 600; font-size: 1rem; border: none; cursor: pointer; background: #22c55e; color: #fff; margin-top: 10px; }
+  .download-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .error { color: #ef4444; font-size: 0.9rem; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="logo">A</div>
+    <h1>Purchase Receipt</h1>
+  </header>
+
+  <div id="loading" class="receipt-card">
+    <h2>Loading receipt…</h2>
+  </div>
+
+  <div id="receipt" style="display:none;">
+    <div class="receipt-card">
+      <h2>Purchase Confirmation</h2>
+      <div class="row"><span class="row label">Product</span><span class="row value" id="prodTitle">—</span></div>
+      <div class="row"><span class="row label">Seller</span><span class="row value">Amina's Creator Shop</span></div>
+      <div class="row"><span class="row label">Order ID</span><span class="hash" id="orderId">—</span></div>
+      <div class="row"><span class="row label">Payment hash</span><span class="hash" id="paymentHash">—</span></div>
+      <div class="row total"><span class="row label">Amount paid</span><span class="row value amount" id="grossAmt">— sats</span></div>
+      <div class="row"><span class="row label">Commission (5%)</span><span class="row value amount" id="commAmt">— sats</span></div>
+      <div class="row"><span class="row label">Routing fee</span><span class="row value amount" id="feeAmt">— sats</span></div>
+    </div>
+    <div class="receipt-card">
+      <h2>Download</h2>
+      <div class="row"><span class="row label">Product</span><span class="row value">Creator Brand Kit</span></div>
+      <button class="download-btn" id="downloadBtn" disabled>Download Creator Brand Kit</button>
+      <div id="downloadMsg" style="color:#94a3b8; font-size:0.85rem; margin-top:8px;"></div>
+    </div>
+    <button class="btn" onclick="location.href='/verify.html?id=' + document.getElementById('orderId').textContent">Verify Independently</button>
+  </div>
+  <div id="error" class="error"></div>
+</div>
+
+<script>
+const API_BASE = '';
+const ORDER_ID = new URLSearchParams(window.location.search).get('id') || '';
+
+async function loadReceipt() {
+  const res = await fetch(`${API_BASE}/api/creator/sales`);
+  if (!res.ok) { document.getElementById('error').textContent = 'Failed to load sales'; return; }
+  const d = await res.json();
+  const sale = d.sales.find(s => s.id === ORDER_ID);
+  if (!sale) { document.getElementById('error').textContent = 'Order not found'; return; }
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('receipt').style.display = 'block';
+  document.getElementById('prodTitle').textContent = sale.product_title || 'Digital Product';
+  document.getElementById('orderId').textContent = sale.id;
+  document.getElementById('paymentHash').textContent = sale.payment_hash;
+  document.getElementById('grossAmt').textContent = (sale.gross_msat / 1000).toLocaleString() + ' sats';
+  document.getElementById('commAmt').textContent = (sale.commission_msat / 1000).toLocaleString() + ' sats';
+  document.getElementById('feeAmt').textContent = (sale.fee_msat / 1000).toLocaleString() + ' sats';
+
+  const btn = document.getElementById('downloadBtn');
+  const msg = document.getElementById('downloadMsg');
+  if (sale.state === 'settled') {
+    btn.disabled = false;
+    btn.textContent = 'Download Creator Brand Kit';
+    msg.textContent = 'Download available — click to receive your product';
+  } else {
+    btn.disabled = true;
+    btn.textContent = 'Download available after settlement';
+    msg.textContent = 'Your purchase is being settled. Please wait.';
+  }
+}
+loadReceipt();
+</script>
+</body>
+</html>

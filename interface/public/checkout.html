@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alibi — Seller Checkout</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0b; color: #e8e8ea; line-height: 1.6; }
+  .container { max-width: 480px; margin: 0 auto; padding: 24px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+  .logo { width: 32px; height: 32px; background: linear-gradient(135deg, #f59e0b, #f97316); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; }
+  h1 { font-size: 1rem; font-weight: 600; letter-spacing: -0.02em; }
+  .card { background: #1a1a1e; border: 1px solid #2d2d34; border-radius: 16px; padding: 24px; margin-bottom: 20px; }
+  .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 16px; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.05em; }
+  .product { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+  .product-img { width: 72px; height: 72px; background: linear-gradient(135deg, #8b5cf6, #d946ef); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 700; color: white; }
+  .product-info { flex: 1; }
+  .product-title { font-size: 1.1rem; font-weight: 600; }
+  .product-desc { font-size: 0.85rem; color: #a1a1aa; margin-top: 4px; }
+  .amount-badge { background: #f59e0b; color: #000; padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: 0.9rem; }
+  .btn { width: 100%; padding: 14px; border-radius: 12px; font-weight: 600; font-size: 1rem; border: none; cursor: pointer; background: #f59e0b; color: #000; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .status { padding: 12px; border-radius: 10px; margin-top: 16px; font-size: 0.9rem; background: #0f172a; border: 1px solid #334155; }
+  .hash { font-family: 'SF Mono', Monaco, monospace; font-size: 0.75rem; color: #94a3b8; word-break: break-all; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="logo">A</div>
+    <h1>Checkout</h1>
+  </header>
+
+  <div id="loading" class="card">
+    <h2>Loading…</h2>
+  </div>
+
+  <div id="checkout" style="display:none;">
+    <div class="card">
+      <h2>Creator Brand Kit</h2>
+      <div class="product">
+        <div class="product-img">CB</div>
+        <div class="product-info">
+          <div class="product-title">Creator Brand Kit</div>
+          <div class="product-desc">Original digital template bundle — ebook, social templates, brand guidelines</div>
+        </div>
+        <div class="amount-badge">100,000 sats</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Pay with Lightning</h2>
+      <div class="hash" id="bolt11">Loading invoice…</div>
+      <div class="hash" id="paymentHash">Payment hash: —</span>
+    </div>
+    <button class="btn" id="payBtn">Open in Wallet</button>
+    <div id="error" class="error"></div>
+  </div>
+</div>
+
+<script>
+const API_BASE = '';
+const ORDER_ID = new URLSearchParams(window.location.search).get('id') || '';
+
+async function loadCheckout() {
+  const res = await fetch(`${API_BASE}/api/checkout/${ORDER_ID}`);
+  if (!res.ok) {
+    document.getElementById('loading').innerHTML = '<h2>Checkout not found</h2>';
+    return;
+  }
+  const data = await res.json();
+  const c = data.checkout;
+  document.getElementById('bolt11').textContent = c.sale_invoice;
+  document.getElementById('paymentHash').textContent = `Payment hash: ${c.payment_hash}`;
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('checkout').style.display = 'block';
+}
+
+async function payWithWallet() {
+  const saleInvoice = document.getElementById('bolt11').textContent;
+  const bolt11Input = prompt('Paste the BOLT11 invoice into your wallet app:\n\n' + saleInvoice, saleInvoice);
+  if (!bolt11Input) return;
+  
+  const res = await fetch(`${API_BASE}/api/checkout/${ORDER_ID}/pay`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ payment_request: bolt11Input })
+  });
+  
+  const data = await res.json();
+  if (!res.ok) {
+    document.getElementById('error').textContent = data.error?.message || 'Payment failed';
+    return;
+  }
+  
+  alert('Payment and settlement complete! Redirecting to receipt…');
+  window.location.href = `/creator/receipt.html?id=${ORDER_ID}`;
+}
+
+document.getElementById('payBtn').addEventListener('click', payWithWallet);
+loadCheckout();
+</script>
+</body>
+</html>

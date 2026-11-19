@@ -24,10 +24,11 @@
  *   DATA_DIR                    (default ./data)
  */
 
-const http = require('http');
 const crypto = require('crypto');
 const fs = require('fs');
+const http = require('http');
 const path = require('path');
+const url = require('url');
 const { CommissionService } = require('./commission-service.js');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -520,6 +521,59 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { ok: true, checkout: serializeCheckout(o) });
   }
 
+  // ── Buyer: pay sale invoice via Carol's node, then full settlement ──
+  if (pathname.startsWith('/api/checkout/') && pathname.endsWith('/pay') && method === 'POST') {
+    const id = pathname.split('/').slice(-2)[0];
+    if (!db) return sendJson(res, 503, { error: { code: 'STORAGE_UNAVAILABLE', message: 'database unavailable' } });
+    const o = db.prepare('SELECT * FROM orders WHERE id = ? AND creator_id = ?').get(id, CREATOR_ID);
+    if (!o) return sendJson(res, 404, { error: { code: 'NOT_FOUND', message: 'checkout not found' } });
+    if (o.state !== 'WAITING_FOR_BUYER') {
+      return sendJson(res, 409, { error: { code: 'INVALID_STATE', message: `order state is ${o.state}` } });
+    }
+    try {
+      // Step 1: Carol pays Alice's sale invoice
+      const payRes = await execFileSync(
+        'docker',
+        ['compose', '-f', path.join(COMPOSE_DIR, 'docker-compose.yml'), 'exec', '-T', 'lnd-carol',
+         'lncli', '--network=regtest', '--rpcserver=127.0.0.1:10031', 'payinvoice',
+         '--force', '--timeout=90s', `--pay_req=${o.sale_invoice}`],
+        { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 }
+      );
+      // Step 2: Wait for Alice's invoice to be ACCEPTED
+      for (let i = 0; i < 30; i++) {
+        const inv = await svc.lnd.lookupInvoice(o.payment_hash);
+        if (inv && inv.state === 'ACCEPTED') break;
+        await new Promise(r => setTimeout(r, 1000));
+      }
+      // Step 3: Alice pays commission
+      const paid = await svc.payCommission(o.commission_invoice, o.payment_hash);
+      if (!paid.success) throw new Error(paid.reason || 'Commission payment failed');
+      // Step 4: Bob settles commission invoice (reveals preimage)
+      await execFileSync(
+        'docker',
+        ['compose', '-f', path.join(COMPOSE_DIR, 'docker-compose.yml'), 'exec', '-T', 'lnd-bob',
+         'lncli', '--network=regtest', '--rpcserver=127.0.0.1:10030', 'settleinvoice', paid.payment.payment_preimage],
+        { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 }
+      );
+      // Step 5: Alice settles sale
+      const settled = await svc.settleSale({ paymentHash: o.payment_hash, preimageHex: paid.payment.payment_preimage });
+      if (!settled.success) throw new Error(settled.reason || 'Settlement failed');
+      // Step 6: Create download token
+      const token = crypto.randomBytes(16).toString('hex');
+      const expiresAt = Math.floor(Date.now() / 1000) + 3600;
+      db.prepare(
+        'UPDATE orders SET download_token_hash = ?, download_expires_at = ? WHERE id = ?'
+      ).run(token, expiresAt, o.id);
+      return sendJson(res, 200, {
+        ok: true,
+        downloadToken: token,
+        message: 'Payment and settlement complete'
+      });
+    } catch (e) {
+      return sendJson(res, 400, { error: { code: 'PAYMENT_FAILED', message: e.message } });
+    }
+  }
+
   // ── Buyer: checkout status (real state from DB) ──
   if (pathname.startsWith('/api/checkout/') && method === 'GET') {
     const id = pathname.split('/').pop();
@@ -528,6 +582,37 @@ const server = http.createServer(async (req, res) => {
     if (!o) return sendJson(res, 404, { error: { code: 'NOT_FOUND', message: 'checkout not found' } });
     return sendJson(res, 200, { ok: true, checkout: serializeCheckout(o) });
   }
+
+  // ── Buyer: download product ──
+  if (pathname.startsWith('/api/checkout/') && pathname.endsWith('/download') && method === 'GET') {
+    const id = pathname.split('/').slice(-2)[0];
+    const token = url.searchParams.get('token');
+    if (!db) return sendJson(res, 503, { error: { code: 'STORAGE_UNAVAILABLE', message: 'database unavailable' } });
+    const o = db.prepare('SELECT * FROM orders WHERE id = ? AND creator_id = ?').get(id, CREATOR_ID);
+    if (!o) return sendJson(res, 404, { error: { code: 'NOT_FOUND', message: 'checkout not found' } });
+    if (o.state !== 'settled') {
+      return sendJson(res, 409, { error: { code: 'INVALID_STATE', message: 'Order not settled yet' } });
+    }
+    if (!o.download_token_hash) {
+      return sendJson(res, 404, { error: { code: 'NOT_FOUND', message: 'No download token' } });
+    }
+    if (token !== o.download_token_hash) {
+      return sendJson(res, 403, { error: { code: 'INVALID_TOKEN', message: 'Invalid download token' } });
+    }
+    const now = Math.floor(Date.now() / 1000);
+    if (o.download_expires_at && now > o.download_expires_at) {
+      return sendJson(res, 403, { error: { code: 'TOKEN_EXPIRED', message: 'Download token expired' } });
+    }
+    const product = db.prepare('SELECT * FROM products WHERE id = ?').get(o.product_id);
+    if (!product) return sendJson(res, 404, { error: { code: 'NOT_FOUND', message: 'Product not found' } });
+    const filePath = path.join(__dirname, '..', '..', product.asset_path);
+    fs.access(filePath, fs.constants.R_OK, (err) => {
+      if (err) return sendJson(res, 404, { error: { code: 'NOT_FOUND', message: 'Product file not found' } });
+      res.download(filePath, `alibi-${o.product_id}.zip`);
+    });
+  }
+
+  // ── Vendor: pay commission (Alice pays Bob's commission invoice) ──
 
   // ── Vendor: pay commission (Alice pays Bob's commission invoice) ──
   if (pathname === '/api/vendor/pay-commission' && method === 'POST') {
@@ -616,6 +701,117 @@ const server = http.createServer(async (req, res) => {
         net_msat: Number(o.gross_msat) - Number(o.commission_msat) - Number(settled.actual_fee_msat || 0),
       },
     });
+  }
+
+  // ── Independent verifier ──
+  if (pathname === '/api/verify/:hash' && method === 'GET') {
+    const hash = pathname.split('/').pop();
+    if (!db) return sendJson(res, 503, { error: { code: 'STORAGE_UNAVAILABLE', message: 'database unavailable' } });
+    if (!/^[0-9a-f]{64}$/.test(hash)) {
+      return sendJson(res, 400, { error: { code: 'INVALID_PARAMS', message: 'Invalid payment hash' } });
+    }
+    try {
+      const ALICE_MAC = process.env.HARBOR_LND_MACAROON || '';
+      const ALICE_TLS = process.env.HARBOR_LND_TLS_CERT || null;
+      const CAROL_MAC = process.env.HARBOR_CAROL_MACAROON || '';
+      const CAROL_TLS = process.env.HARBOR_CAROL_TLS_CERT || null;
+      const ALICE_REST = process.env.HARBOR_LND_REST_URL || '';
+      const CAROL_REST = process.env.HARBOR_CAROL_REST_URL || '';
+
+      async function lndRequest(restUrl, macaroonHex, tlsCertPath, method, path) {
+        const u = new URL(restUrl);
+        const isHttps = u.protocol === 'https:';
+        const opts = {
+          hostname: u.hostname,
+          port: u.port || (isHttps ? 443 : 80),
+          path,
+          method,
+          headers: { 'Grpc-Metadata-macaroon': macaroonHex },
+        };
+        if (isHttps && tlsCertPath) {
+          opts.ca = fs.readFileSync(tlsCertPath);
+          opts.rejectUnauthorized = true;
+        }
+        return new Promise((resolve, reject) => {
+          const req = (isHttps ? https : http).request(opts, (res) => {
+            let data = '';
+            res.on('data', (c) => (data += c));
+            res.on('end', () => {
+              try { resolve({ status: res.statusCode, body: JSON.parse(data) }); }
+              catch (e) { resolve({ status: res.statusCode, body: data }); }
+            });
+          });
+          req.on('error', reject);
+          req.end();
+        });
+      }
+
+      async function lookupInvoice(restUrl, macaroonHex, tlsCertPath, hash) {
+        const r = await lndRequest(restUrl, macaroonHex, tlsCertPath, 'GET', `/v1/invoice/${hash}`);
+        if (r.status === 404) return null;
+        if (r.status >= 400) throw new Error(`Invoice lookup ${r.status}`);
+        return r.body;
+      }
+      async function listPayments(restUrl, macaroonHex, tlsCertPath) {
+        const r = await lndRequest(restUrl, macaroonHex, tlsCertPath, 'GET', '/v1/payments?include_incomplete=true&max_payments=100');
+        if (r.status >= 400) throw new Error(`ListPayments ${r.status}`);
+        return r.body.payments || [];
+      }
+
+      const checks = {};
+
+      // 1. Alice sale invoice
+      const saleInv = await lookupInvoice(ALICE_REST, ALICE_MAC, ALICE_TLS, hash);
+      checks.aliceSale = !!saleInv && saleInv.state === 'SETTLED';
+
+      // 2. Bob commission invoice
+      const commInv = await lookupInvoice(CAROL_REST, CAROL_MAC, CAROL_TLS, hash);
+      checks.bobCommission = !!commInv && commInv.state === 'SETTLED';
+
+      // 3. Carol buyer payment
+      const carolPays = await listPayments(CAROL_REST, CAROL_MAC, CAROL_TLS);
+      const buyerPay = carolPays.find(p => p.payment_hash === hash);
+      checks.carolPayment = !!buyerPay && buyerPay.status === 'SUCCEEDED';
+
+      // 4. Alice outgoing commission payment
+      const alicePays = await listPayments(ALICE_REST, ALICE_MAC, ALICE_TLS);
+      const outgoingPay = alicePays.find(p => p.payment_hash === hash);
+      checks.aliceOutgoing = !!outgoingPay && outgoingPay.status === 'SUCCEEDED';
+
+      // 5. Preimage match
+      const preimage = outgoingPay ? outgoingPay.payment_preimage : '';
+      checks.preimageMatch = !!preimage && /^[0-9a-f]{64}$/.test(preimage) &&
+        crypto.createHash('sha256').update(Buffer.from(preimage, 'hex')).digest('hex') === hash;
+
+      // 6. Fee within cap
+      const feeCap = Number(saleInv ? (BigInt(saleInv.value_msat || BigInt(saleInv.value || 0) * 1000n) * BigInt(5000) / 1_000_000n + BigInt(1000)) : 0);
+      const actualFee = outgoingPay ? BigInt(outgoingPay.fee_msat || '0') : 0n;
+      checks.feeWithinCap = actualFee <= feeCap;
+
+      // 7. Seller net reconciliation
+      const grossMsat = BigInt(saleInv ? (saleInv.value_msat || BigInt(saleInv.value || 0) * 1000n) : 0);
+      const commMsat = BigInt(commInv ? (commInv.value_msat || BigInt(commInv.value || 0) * 1000n) : 0);
+      const expectedNet = grossMsat - commMsat - actualFee;
+      checks.sellerNet = actualFee <= feeCap && expectedNet >= 0;
+
+      const allPass = checks.aliceSale && checks.bobCommission && checks.carolPayment &&
+        checks.aliceOutgoing && checks.preimageMatch && checks.feeWithinCap && checks.sellerNet;
+
+      return sendJson(res, 200, {
+        ok: true,
+        result: {
+          aliceSale: checks.aliceSale,
+          bobCommission: checks.bobCommission,
+          carolPayment: checks.carolPayment,
+          aliceOutgoing: checks.aliceOutgoing,
+          preimageMatch: checks.preimageMatch,
+          feeWithinCap: checks.feeWithinCap,
+          sellerNet: checks.sellerNet,
+        }
+      });
+    } catch (e) {
+      return sendJson(res, 500, { error: { code: 'VERIFY_FAILED', message: e.message } });
+    }
   }
 
   // 404
