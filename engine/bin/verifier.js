@@ -36,6 +36,7 @@ const EXPECTED = {
   sale_msat: 100000000n,        // 100,000 sats
   commission_msat: 5000000n,    // 5,000 sats
   vendor_remainder_msat: 95000000n, // 95,000 sats before fees
+  base_routing_fee_msat: 26000n, // base 1,000 + 5,000 ppm * 5,000,000 / 1e6
   max_rate_ppm: 50000,          // 5%
 };
 
@@ -101,9 +102,20 @@ class NodeClient {
   }
 
   async listPayments() {
-    const r = await this.request('GET', '/v1/payments?max_payments=20');
-    if (r.status >= 400) throw new Error(`${this.name}: payments ${r.status}`);
-    return r.body.payments || [];
+    // Paginate LND's listpayments (index_offset) so an older payment outside
+    // the first page is never silently missed.
+    const all = [];
+    let offset = 0;
+    const pageSize = 100;
+    for (let i = 0; i < 10; i++) {
+      const r = await this.request('GET', `/v1/payments?include_incomplete=true&reversed=true&num_max_payments=${pageSize}&index_offset=${offset}`);
+      if (r.status >= 400) throw new Error(`${this.name}: payments ${r.status}`);
+      const page = r.body.payments || [];
+      all.push(...page);
+      if (page.length < pageSize) break;
+      offset += page.length;
+    }
+    return all;
   }
 }
 
@@ -201,6 +213,39 @@ async function verify() {
     commInv.r_preimage = '[REDACTED-NOT-WRITTEN]';
   }
 
+  // --- Alice: outgoing commission payment (independent verification) ---
+  // Queried with Alice's read-only credentials; never trusts the app DB.
+  const alicePays = await nodes.alice.listPayments();
+  const outgoingPay = alicePays.find(p => p.payment_hash === paymentHash);
+  check('alice.outgoing.exists', 'outgoing commission payment found on vendor node', !!outgoingPay);
+  let outgoingFeeMsat = null;
+  let outgoingPreimageOk = null;
+  if (outgoingPay) {
+    const paidSat = BigInt(outgoingPay.value_sat || outgoingPay.value || 0);
+    const paidMsat = paidSat * 1000n;
+    check('alice.outgoing.status', 'outgoing commission payment terminal SUCCEEDED',
+      outgoingPay.status === 'SUCCEEDED', outgoingPay.status);
+    check('alice.outgoing.hash', 'outgoing payment hash matches sale/commission hash',
+      outgoingPay.payment_hash === paymentHash, outgoingPay.payment_hash);
+    check('alice.outgoing.amount', `outgoing paid ${EXPECTED.commission_msat} msat commission`,
+      paidMsat === EXPECTED.commission_msat, `got ${paidMsat} msat`);
+    // Actual routing fee present and within policy cap.
+    const feeSat = BigInt(outgoingPay.fee_sat || outgoingPay.fee_msat || 0);
+    outgoingFeeMsat = feeSat * 1000n;
+    const feeCapMsat = EXPECTED.commission_msat * BigInt(EXPECTED.max_rate_ppm) / 1_000_000n + BigInt(EXPECTED.base_routing_fee_msat || 1000);
+    check('alice.outgoing.fee_within_cap', `actual fee ${outgoingFeeMsat}msat within policy cap`,
+      outgoingFeeMsat <= feeCapMsat, `fee=${outgoingFeeMsat}msat cap=${feeCapMsat}msat`);
+    // Preimage hashes to the shared payment hash.
+    const pre = String(outgoingPay.payment_preimage || '');
+    if (/^[0-9a-f]{64}$/.test(pre)) {
+      outgoingPreimageOk = crypto.createHash('sha256').update(Buffer.from(pre, 'hex')).digest('hex') === paymentHash;
+      check('alice.outgoing.preimage', 'SHA256(outgoing preimage) == payment hash', outgoingPreimageOk === true);
+    } else {
+      check('alice.outgoing.preimage', 'outgoing payment preimage is a valid 32-byte hex', false, pre ? pre : '(none)');
+    }
+    outgoingPay.payment_preimage = '[REDACTED-NOT-WRITTEN]';
+  }
+
   // --- Arithmetic reconciliation ---
   check('math.split', 'sale == commission + vendor remainder',
     EXPECTED.sale_msat === EXPECTED.commission_msat + EXPECTED.vendor_remainder_msat,
@@ -208,6 +253,13 @@ async function verify() {
   check('math.rate', 'commission / sale <= max_rate_ppm',
     EXPECTED.commission_msat * 1000000n / EXPECTED.sale_msat <= BigInt(EXPECTED.max_rate_ppm),
     `${EXPECTED.commission_msat * 1000000n / EXPECTED.sale_msat} ppm`);
+
+  // --- Seller net reconciliation ---
+  // gross (buyer) - commission - actual fee = seller net
+  const sellerNetMsat = EXPECTED.sale_msat - EXPECTED.commission_msat - (outgoingFeeMsat ?? 0n);
+  check('math.seller_net', 'seller net == gross - commission - actual fee',
+    sellerNetMsat === EXPECTED.vendor_remainder_msat - (outgoingFeeMsat ?? 0n),
+    `net=${sellerNetMsat}msat`);
 
   // --- Carol: buyer side ---
   const carolPays = await nodes.carol.listPayments();

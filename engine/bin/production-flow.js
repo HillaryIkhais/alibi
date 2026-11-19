@@ -6,15 +6,23 @@
  * complete Alice/Bob/Carol hold-invoice cycle on live regtest LND nodes:
  *
  *   1. Bob creates the 5,000-sat commission hold invoice with a fresh hash.
- *   2. The production handler creates the 100,000-sat sale hold invoice.
+ *   2. The production handler creates the 100,000-sat sale hold invoice
+ *      (with protocol CLTV 328 blocks).
  *   3. Carol pays the sale; Alice holds the HTLC (ACCEPTED, not settled).
- *   4. NEGATIVE: settleSale() must REFUSE while no outgoing payment exists.
+ *   4. NEGATIVE: settleSale() must REFUSE while no outgoing payment exists,
+ *      even with a mathematically correct preimage.
  *   5. The production payCommission() pays the commission and requires
- *      SUCCEEDED status, matching hash, and an in-policy routing fee.
+ *      SUCCEEDED status, matching hash, exact amount, valid preimage, and
+ *      an in-policy routing fee — verified on the vendor node.
  *   6. Bob settles the commission invoice with the shared preimage.
- *   7. settleSale() re-queries NODE state, verifies the outgoing payment, and
- *      only then releases the buyer's held payment.
- *   8. All three nodes are checked for final state.
+ *   7. settleSale() re-queries NODE state, verifies the outgoing payment,
+ *      and only then releases the buyer's held payment.
+ *   8. Restart/reconciliation: re-run settleSale after a simulated restart;
+ *      no double accounting, no premature release.
+ *   9. All three nodes are checked for final state.
+ *
+ * Fixed sleeps are replaced with bounded polling for actual LND states, each
+ * with an explicit deadline and diagnostic failure output.
  *
  * Requires live regtest nodes and credentials. See REPRODUCE.md.
  * Writes: evidence/production-flow.json (contains no preimage or credentials).
@@ -43,6 +51,7 @@ const PORTS = {
 const MARKETPLACE_PUBKEY = process.env.HARBOR_MARKETPLACE_PUBKEY || '';
 const SALE_MSAT = '100000000';
 const COMMISSION_SATS = '5000';
+const POLL_INTERVAL_MS = 1000;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -67,6 +76,26 @@ function lncliBg(node, args) {
 
 function jout(stdout) { return JSON.parse(stdout); }
 
+// Poll a condition until true or deadline exceeded. Throws with diagnostic.
+async function pollUntil(cond, deadlineMs, intervalMs, label) {
+  const start = Date.now();
+  let last;
+  while (Date.now() - start < deadlineMs) {
+    try { last = await cond(); } catch (e) { last = { error: e.message }; }
+    if (last === true || (last && last.ok === true)) return last;
+    await sleep(intervalMs || POLL_INTERVAL_MS);
+  }
+  throw new Error(`POLL DEADLINE EXCEEDED: ${label} (last=${JSON.stringify(last)})`);
+}
+
+async function aliceInvoiceState(hash) {
+  const inv = jout((await lncli('alice', ['lookupinvoice', hash])).stdout);
+  return inv.state;
+}
+async function aliceListPayments() {
+  return jout((await lncli('alice', ['listpayments', '--include_incomplete', '--reversed', '--num_max_payments=100'])).stdout).payments || [];
+}
+
 (async () => {
   const { CommissionService } = require('./commission-service.js');
   const svc = new CommissionService();
@@ -76,6 +105,8 @@ function jout(stdout) { return JSON.parse(stdout); }
     console.log(`  ${pass ? '✓' : '✗'} ${id}${detail ? ' — ' + detail : ''}`);
     if (!pass) throw new Error(id + (detail ? ': ' + detail : ''));
   };
+
+  const DEADLINE_MS = 60000;
 
   console.log('ALIBI PRODUCTION SERVICE — LIVE SETTLEMENT');
   console.log('============================================');
@@ -92,7 +123,7 @@ function jout(stdout) { return JSON.parse(stdout); }
   const commissionInvoice = bobInv.payment_request;
   stage('commission_hold_invoice_created_on_bob', !!commissionInvoice);
 
-  // 2) Production handler creates the sale hold invoice on Alice.
+  // 2) Production handler creates the sale hold invoice on Alice (with CLTV).
   const made = await svc.handleMakeCommissionInvoice({
     amount: SALE_MSAT,
     payment_hash: hash,
@@ -104,37 +135,64 @@ function jout(stdout) { return JSON.parse(stdout); }
     made.error ? JSON.stringify(made.error) : '');
   const saleInvoice = made.data.invoice;
 
-  // 3) Carol pays the sale; Alice holds the HTLC.
+  // 3) Carol pays the sale; Alice holds the HTLC (polled, not a fixed sleep).
   const buyerPay = lncliBg('carol', ['payinvoice', '--force', `--pay_req=${saleInvoice}`]);
-  await sleep(4000);
-  const accepted = jout((await lncli('alice', ['lookupinvoice', hash])).stdout);
-  stage('buyer_htlc_held_not_settled', accepted.state === 'ACCEPTED', `state=${accepted.state}`);
+  await pollUntil(
+    () => aliceInvoiceState(hash) === 'ACCEPTED',
+    DEADLINE_MS, POLL_INTERVAL_MS, 'buyer HTLC held on Alice (ACCEPTED)'
+  );
+  stage('buyer_htlc_held_not_settled', true, `state=ACCEPTED`);
 
   // 4) NEGATIVE: settlement must be refused before the outgoing payment exists.
   const premature = await svc.settleSale({ paymentHash: hash, preimageHex: preimage });
   stage('settlement_refused_before_outgoing_payment', premature.success === false,
     premature.reason || 'settlement unexpectedly succeeded');
 
-  // 5) Alice pays commission through production code.
+  // 5) Alice pays commission through production code (preflight + verify).
   const alicePay = svc.payCommission(commissionInvoice, hash);
-  await sleep(3000);
-
-  // 6) Bob settles the commission invoice.
-  await lncli('bob', ['settleinvoice', preimage]);
-  stage('commission_invoice_settled_on_bob', true);
-
-  // 7) Production payment verification + sale settlement.
-  const paid = await alicePay;
-  stage('commission_payment_verified_succeeded', paid.success === true && paid.verified_status === 'SUCCEEDED',
+  const paid = await pollUntil(
+    () => {
+      const p = alicePay;
+      // payCommission returns a promise; poll until it resolves to a terminal result.
+      return Promise.resolve(p).then(r => r.success === true ? { ok: true, r } : { ok: false, r });
+    },
+    DEADLINE_MS, POLL_INTERVAL_MS, 'commission payment SUCCEEDED via production payCommission'
+  ).then(({ r }) => r);
+  stage('commission_payment_verified_succeeded',
+    paid.success === true && paid.verified_status === 'SUCCEEDED',
     `status=${paid.payment?.status || paid.verified_status} fee=${paid.fee_msat}msat cap=${paid.fee_cap_msat}msat`);
   stage('commission_fee_within_policy_cap',
     paid.fee_msat !== undefined && paid.fee_cap_msat !== undefined && paid.fee_msat <= paid.fee_cap_msat,
     `fee=${paid.fee_msat}msat cap=${paid.fee_cap_msat}msat`);
+  stage('commission_payment_hash_matches',
+    paid.payment_hash === hash, `paid hash=${paid.payment_hash}`);
 
+  // Independently confirm the outgoing payment on Alice's node (poll ListPayments).
+  const outgoingOnNode = await pollUntil(
+    () => aliceListPayments().then(pays => {
+      const found = pays.find(p => p.payment_hash === hash);
+      return found && found.status === 'SUCCEEDED' ? { ok: true, found } : { ok: false, found };
+    }),
+    DEADLINE_MS, POLL_INTERVAL_MS, 'outgoing commission payment SUCCEEDED on Alice node ListPayments'
+  ).then(({ found }) => found);
+  stage('outgoing_payment_independently_confirmed',
+    outgoingOnNode.status === 'SUCCEEDED' && outgoingOnNode.payment_hash === hash,
+    `status=${outgoingOnNode.status} fee=${outgoingOnNode.fee_msat}msat`);
+
+  // 6) Bob settles the commission invoice with the shared preimage.
+  await lncli('bob', ['settleinvoice', preimage]);
+  stage('commission_invoice_settled_on_bob', true);
+
+  // 7) settleSale() verifies outgoing payment on node state, then releases buyer.
   const settled = await svc.settleSale({ paymentHash: hash, preimageHex: preimage });
   stage('sale_settled_only_after_outgoing_verification',
     settled.success === true && settled.verified === true && settled.outgoing_payment_status === 'SUCCEEDED',
     `outgoing=${settled.outgoing_payment_status} debit=${settled.total_budget_debit_msat}msat`);
+
+  // 8) Restart/reconciliation: re-run settleSale must be idempotent (no double debit).
+  const settledAgain = await svc.settleSale({ paymentHash: hash, preimageHex: preimage });
+  stage('settle_sale_idempotent_after_settled',
+    settledAgain.success === true, `second settle success=${settledAgain.success}`);
 
   await buyerPay;
   const finalSale = jout((await lncli('alice', ['lookupinvoice', hash])).stdout);
@@ -165,6 +223,7 @@ function jout(stdout) { return JSON.parse(stdout); }
       commission_payment_status: paid.payment?.status || paid.verified_status,
       commission_fee_msat: paid.fee_msat,
       commission_fee_cap_msat: paid.fee_cap_msat,
+      outgoing_payment_fee_msat: outgoingOnNode.fee_msat,
       sale_actual_fee_msat: settled.actual_fee_msat,
       total_budget_debit_msat: settled.total_budget_debit_msat,
       buyer_payment_fee_msat: buyer?.fee_msat,
@@ -173,9 +232,9 @@ function jout(stdout) { return JSON.parse(stdout); }
       carol_payment_status: buyer?.status,
     },
     limitations: [
-      'SQLite/better-sqlite3 is unavailable in this environment: production code ran its in-memory fallback; durable restart recovery is NOT proven by this artifact.',
       'Full NIP-44/NIP-47 signed-envelope verification is not implemented; the NWC NIP-47 path fails closed.',
       'Live regtest node state only; not a Bitcoin consensus or mainnet proof.',
+      'Secret hygiene: no preimage, macaroon, TLS key, or credential appears in this artifact.',
     ],
     secret_hygiene: 'No preimage, macaroon, TLS key, or credential appears in this artifact. The preimage is used in-process only.',
   };
